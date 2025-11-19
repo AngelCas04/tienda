@@ -1,172 +1,212 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { Invoice } from '../types';
+import { Invoice, InvoiceItem } from '../types';
 
-const priceList = `
-- Aceite: $1.50/botella trasegado
-- Arroz blanco y preco: $0.60/lb
-- Azúcar: $0.55/lb
-- Café Riko: $3.90/caja y 3 sobresitos por $0.25
-- Harina Suave: $1.50
-- Aceite Orisol: $2.15
-- Aceite Mazola: $2.15
-- Bandeja Anaranjado: $3.25
-- Bandeja Dipsa: $4.25
-- Jamaica: $2.20/lb
-- Plato rosado: $0.65/unidad
-- Plato azul: $0.70/unidad
-- Leche pesada: $2.80/lb
-- Rancheras: $0.60/unidad
-- Sopas: $0.45/unidad (genérica, si no se especifica otra)
-- Coditos: $0.60/unidad
-- Margarina: $0.45/barrita y $2 la caja
-- Aluminio: $1/unidad
-- Vaso 8: $0.75/unidad
-- Vaso 10: $0.90/unidad
-- Bolsa de 1lb: $0.60
-- Bolsa de 2lb: $0.80
-- Jugos ya: $0.35/unidad
-- Frijoles: $1.20/lb
-- Bolsa de 3lb: $1
-- Bolsa de #1: $1
-- Bolsa de #2: $1.80
-- Macarrones: $0.60/unidad
-- Salsas Chula: $0.35
-- Soperos: $4.25 la tira entera y 5 por $1
-- Coscafe De hervir: $1.20/unidad
-- Lasaña: $2.25
-- Coscafe: $2 caja y 3 por $0.25
-- Sopa de tortilla Knorr: $1
-- Sopa de mariscos: $0.80/unidad
-- Sopa de cola de res: $0.80/unidad
-- Sopa de tortilla Maggi: $0.80/unidad
-- Bolsa de 5lb: $1.85
-- Papel Scott: $1.25/unidad
-- Jabón de ropa: $1.10/unidad
-- Leche 26g: $0.35/unidad
-- Leche 350g: $3.50/unidad
-- Vinagre de manzana: $1/unidad
-- Esencias (vainilla, fresa): $1 grande y $0.60 pequeña
-- Salsa de Soya Shihito: $1
-- Chile ciruela: $0.25/unidad
-- Chile guaco: 2 por $0.25
-- Pasta Colgate: $1/unidad
-- Salsa inglesa: $1.50/unidad
-- Bote de ajo grande: $1.50/unidad
-- Mostaza preparada bote: $1.50/unidad
-- Chile Jalisco: $1.50/unidad
-- Chile macho: $1.50/unidad
-- Chile grosero: $1.25/unidad
-- Avena: $1.30/unidad
-- Fósforo: $0.40/unidad
-- Sardina Del norte: $1/unidad
-- Sardina Madrigal: $2.85/unidad
-- Cubitos: 25 por $1
-- Lata Hongos: $2.25/unidad
-- Bolsa Mini Termo: $0.85/unidad
-- Bolsa Mini Corriente: $0.65/unidad
-`;
+// Definición de productos con sus palabras clave y precios
+interface ProductDef {
+  id: string;
+  keywords: string[];
+  price: number;
+  name: string;
+  unit: string;
+}
 
-const systemInstruction = `Eres un asistente de punto de venta para una tienda. Tu única función es procesar pedidos de clientes y responder preguntas sobre precios basándote ESTRICTAMENTE en la siguiente lista de precios. Todos los precios están en dólares americanos (USD).
+const PRODUCTS: ProductDef[] = [
+  // Aceites
+  { id: 'aceite_orisol', keywords: ['aceite orisol', 'orisol'], price: 2.15, name: 'Aceite Orisol', unit: 'unidad' },
+  { id: 'aceite_mazola', keywords: ['aceite mazola', 'mazola'], price: 2.15, name: 'Aceite Mazola', unit: 'unidad' },
+  { id: 'aceite_generico', keywords: ['aceite'], price: 1.50, name: 'Aceite (Trasegado)', unit: 'botella' },
 
-LISTA DE PRECIOS:
-${priceList}
+  // Granos y Básicos
+  { id: 'arroz', keywords: ['arroz'], price: 0.60, name: 'Arroz blanco y preco', unit: 'lb' },
+  { id: 'azucar', keywords: ['azucar', 'azúcar'], price: 0.55, name: 'Azúcar', unit: 'lb' },
+  { id: 'harina', keywords: ['harina'], price: 1.50, name: 'Harina Suave', unit: 'unidad' },
+  { id: 'frijoles', keywords: ['frijoles', 'frijol'], price: 1.20, name: 'Frijoles', unit: 'lb' },
+  { id: 'avena', keywords: ['avena'], price: 1.30, name: 'Avena', unit: 'unidad' },
+  
+  // Café
+  { id: 'cafe_riko_caja', keywords: ['cafe riko', 'café riko', 'caja de cafe'], price: 3.90, name: 'Café Riko (Caja)', unit: 'caja' },
+  { id: 'cafe_sobres', keywords: ['sobre de cafe', 'sobres de cafe', 'sobre cafe', 'sobres cafe'], price: 0.09, name: 'Sobre Café Riko', unit: 'sobre' }, // Aprox para cálculo unitario (3x0.25)
+  { id: 'coscafe_hervir', keywords: ['coscafe de hervir', 'coscafé de hervir'], price: 1.20, name: 'Coscafe De hervir', unit: 'unidad' },
+  { id: 'coscafe_caja', keywords: ['coscafe', 'coscafé'], price: 2.00, name: 'Coscafe (Caja)', unit: 'caja' },
 
-TUS REGLAS:
-1.  **Si el usuario te da un pedido (una lista de artículos)**: DEBES responder ÚNICAMENTE con un objeto JSON que siga el esquema definido. Calcula el subtotal para cada artículo (cantidad * precio unitario) y el total general. Interpreta cantidades como 'un', 'una', 'dos', etc. Si no se especifica cantidad, asume 1. Para artículos vendidos por libra (lb), la cantidad debe reflejar eso (ej. "1 lb").
-2.  **Si el usuario pregunta por el precio de uno o varios artículos**: Responde con un texto corto y directo en español. Por ejemplo, si preguntan "¿Cuánto cuesta el arroz?", responde "El arroz blanco y preco cuesta $0.60 por libra.". No uses el formato JSON para esto.
-3.  **No respondas a ninguna pregunta que no esté relacionada con la lista de precios o la creación de una factura.** Si te preguntan otra cosa, responde amablemente: "Solo puedo ayudarte con precios y pedidos de la tienda.".
-4.  Sé preciso con los cálculos.
-5.  Interpreta el lenguaje natural. "un arroz" significa "1 lb de Arroz blanco y preco". "dos sopas" significa 2 unidades de "Sopas".
-`;
+  // Bandejas y Platos
+  { id: 'bandeja_dipsa', keywords: ['bandeja dipsa'], price: 4.25, name: 'Bandeja Dipsa', unit: 'unidad' },
+  { id: 'bandeja_anaranjado', keywords: ['bandeja anaranjado', 'bandeja naranja'], price: 3.25, name: 'Bandeja Anaranjado', unit: 'unidad' },
+  { id: 'plato_rosado', keywords: ['plato rosado', 'platos rosados'], price: 0.65, name: 'Plato rosado', unit: 'unidad' },
+  { id: 'plato_azul', keywords: ['plato azul', 'platos azules'], price: 0.70, name: 'Plato azul', unit: 'unidad' },
+  { id: 'vaso_8', keywords: ['vaso 8', 'vasos 8'], price: 0.75, name: 'Vaso #8', unit: 'unidad' },
+  { id: 'vaso_10', keywords: ['vaso 10', 'vasos 10'], price: 0.90, name: 'Vaso #10', unit: 'unidad' },
 
+  // Bebidas y Líquidos
+  { id: 'jamaica', keywords: ['jamaica'], price: 2.20, name: 'Jamaica', unit: 'lb' },
+  { id: 'leche_pesada', keywords: ['leche pesada'], price: 2.80, name: 'Leche pesada', unit: 'lb' },
+  { id: 'leche_26g', keywords: ['leche 26g', 'leche pequeña'], price: 0.35, name: 'Leche 26g', unit: 'unidad' },
+  { id: 'leche_350g', keywords: ['leche 350g', 'leche grande'], price: 3.50, name: 'Leche 350g', unit: 'unidad' },
+  { id: 'jugos_ya', keywords: ['jugos ya', 'jugo ya'], price: 0.35, name: 'Jugos Ya', unit: 'unidad' },
+  { id: 'vinagre', keywords: ['vinagre'], price: 1.00, name: 'Vinagre de manzana', unit: 'unidad' },
 
-const invoiceSchema = {
-  type: Type.OBJECT,
-  properties: {
-    items: {
-      type: Type.ARRAY,
-      description: 'Lista de los artículos en el pedido.',
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          quantity: {
-            type: Type.STRING,
-            description: 'La cantidad del artículo (ej. "2 unidades", "1 lb").',
-          },
-          product: {
-            type: Type.STRING,
-            description: 'El nombre del producto.',
-          },
-          unit_price: {
-            type: Type.NUMBER,
-            description: 'El precio por unidad del producto.',
-          },
-          subtotal: {
-            type: Type.NUMBER,
-            description: 'El costo total para este artículo (cantidad * precio unitario).',
-          },
-        },
-        required: ['quantity', 'product', 'unit_price', 'subtotal'],
-      },
-    },
-    total_items: {
-      type: Type.NUMBER,
-      description: 'El número total de artículos individuales en el pedido.',
-    },
-    grand_total: {
-      type: Type.NUMBER,
-      description: 'La suma total de todos los subtotales.',
-    },
-  },
-  required: ['items', 'total_items', 'grand_total'],
+  // Sopas y Pastas
+  { id: 'rancheras', keywords: ['ranchera', 'rancheras'], price: 0.60, name: 'Rancheras', unit: 'unidad' },
+  { id: 'sopa_tortilla_knorr', keywords: ['sopa de tortilla knorr', 'sopa tortilla knorr'], price: 1.00, name: 'Sopa de tortilla Knorr', unit: 'unidad' },
+  { id: 'sopa_tortilla_maggi', keywords: ['sopa de tortilla maggi', 'sopa tortilla maggi'], price: 0.80, name: 'Sopa de tortilla Maggi', unit: 'unidad' },
+  { id: 'sopa_mariscos', keywords: ['sopa de marisco', 'sopa mariscos'], price: 0.80, name: 'Sopa de mariscos', unit: 'unidad' },
+  { id: 'sopa_cola', keywords: ['sopa de cola', 'sopa cola'], price: 0.80, name: 'Sopa de cola de res', unit: 'unidad' },
+  { id: 'soperos_tira', keywords: ['tira de soperos', 'tira soperos'], price: 4.25, name: 'Soperos (Tira entera)', unit: 'tira' },
+  { id: 'soperos_indiv', keywords: ['soperos', 'sopero'], price: 0.20, name: 'Soperos (Individual)', unit: 'unidad' }, // 5 x $1 = 0.20
+  { id: 'sopas_generic', keywords: ['sopa', 'sopas'], price: 0.45, name: 'Sopas (Genérica)', unit: 'unidad' },
+  { id: 'coditos', keywords: ['codito', 'coditos'], price: 0.60, name: 'Coditos', unit: 'unidad' },
+  { id: 'macarrones', keywords: ['macarron', 'macarrones'], price: 0.60, name: 'Macarrones', unit: 'unidad' },
+  { id: 'lasana', keywords: ['lasaña', 'lasana'], price: 2.25, name: 'Lasaña', unit: 'unidad' },
+
+  // Varios Cocina
+  { id: 'margarina_caja', keywords: ['caja de margarina', 'caja margarina'], price: 2.00, name: 'Margarina (Caja)', unit: 'caja' },
+  { id: 'margarina_barra', keywords: ['margarina', 'barra margarina'], price: 0.45, name: 'Margarina (Barrita)', unit: 'barrita' },
+  { id: 'aluminio', keywords: ['aluminio'], price: 1.00, name: 'Aluminio', unit: 'unidad' },
+  { id: 'salsas_chula', keywords: ['salsa chula', 'salsas chula'], price: 0.35, name: 'Salsas Chula', unit: 'unidad' },
+  { id: 'esencia_grande', keywords: ['esencia grande', 'vainilla grande', 'fresa grande'], price: 1.00, name: 'Esencia (Grande)', unit: 'unidad' },
+  { id: 'esencia_pequena', keywords: ['esencia', 'vainilla', 'fresa'], price: 0.60, name: 'Esencia (Pequeña)', unit: 'unidad' }, // Default pequeña si no especifica
+  { id: 'salsa_soya', keywords: ['salsa de soya', 'salsa soya'], price: 1.00, name: 'Salsa de Soya Shihito', unit: 'unidad' },
+  { id: 'salsa_inglesa', keywords: ['salsa inglesa'], price: 1.50, name: 'Salsa inglesa', unit: 'unidad' },
+  { id: 'ajo', keywords: ['ajo', 'bote de ajo'], price: 1.50, name: 'Bote de ajo grande', unit: 'unidad' },
+  { id: 'mostaza', keywords: ['mostaza'], price: 1.50, name: 'Mostaza preparada bote', unit: 'unidad' },
+  { id: 'cubitos', keywords: ['cubito', 'cubitos'], price: 0.04, name: 'Cubitos', unit: 'unidad' }, // 25 x $1 = 0.04
+  { id: 'hongos', keywords: ['lata hongos', 'hongo'], price: 2.25, name: 'Lata Hongos', unit: 'unidad' },
+  { id: 'sardina_madrigal', keywords: ['sardina madrigal'], price: 2.85, name: 'Sardina Madrigal', unit: 'unidad' },
+  { id: 'sardina_norte', keywords: ['sardina del norte', 'sardina norte', 'sardina'], price: 1.00, name: 'Sardina Del norte', unit: 'unidad' },
+  
+  // Chiles
+  { id: 'chile_ciruela', keywords: ['chile ciruela'], price: 0.25, name: 'Chile ciruela', unit: 'unidad' },
+  { id: 'chile_guaco', keywords: ['chile guaco'], price: 0.125, name: 'Chile guaco', unit: 'unidad' }, // 2 x 0.25
+  { id: 'chile_jalisco', keywords: ['chile jalisco'], price: 1.50, name: 'Chile Jalisco', unit: 'unidad' },
+  { id: 'chile_macho', keywords: ['chile macho'], price: 1.50, name: 'Chile macho', unit: 'unidad' },
+  { id: 'chile_grosero', keywords: ['chile grosero'], price: 1.25, name: 'Chile grosero', unit: 'unidad' },
+
+  // Bolsas
+  { id: 'bolsa_1lb', keywords: ['bolsa de 1lb', 'bolsa 1lb', 'bolsa de una libra'], price: 0.60, name: 'Bolsa de 1lb', unit: 'unidad' },
+  { id: 'bolsa_2lb', keywords: ['bolsa de 2lb', 'bolsa 2lb', 'bolsa de dos libras'], price: 0.80, name: 'Bolsa de 2lb', unit: 'unidad' },
+  { id: 'bolsa_3lb', keywords: ['bolsa de 3lb', 'bolsa 3lb', 'bolsa de tres libras'], price: 1.00, name: 'Bolsa de 3lb', unit: 'unidad' },
+  { id: 'bolsa_5lb', keywords: ['bolsa de 5lb', 'bolsa 5lb', 'bolsa de cinco libras'], price: 1.85, name: 'Bolsa de 5lb', unit: 'unidad' },
+  { id: 'bolsa_1', keywords: ['bolsa 1', 'bolsa #1', 'bolsa numero 1'], price: 1.00, name: 'Bolsa de #1', unit: 'unidad' },
+  { id: 'bolsa_2', keywords: ['bolsa 2', 'bolsa #2', 'bolsa numero 2'], price: 1.80, name: 'Bolsa de #2', unit: 'unidad' },
+  { id: 'bolsa_mini_termo', keywords: ['bolsa mini termo'], price: 0.85, name: 'Bolsa Mini Termo', unit: 'unidad' },
+  { id: 'bolsa_mini', keywords: ['bolsa mini'], price: 0.65, name: 'Bolsa Mini Corriente', unit: 'unidad' },
+
+  // Limpieza y Otros
+  { id: 'papel_scott', keywords: ['papel scott', 'papel higienico'], price: 1.25, name: 'Papel Scott', unit: 'unidad' },
+  { id: 'jabon_ropa', keywords: ['jabon de ropa', 'jabón de ropa', 'jabon ropa'], price: 1.10, name: 'Jabón de ropa', unit: 'unidad' },
+  { id: 'pasta_colgate', keywords: ['pasta colgate', 'colgate'], price: 1.00, name: 'Pasta Colgate', unit: 'unidad' },
+  { id: 'fosforos', keywords: ['fosforo', 'fósforo', 'fosforos'], price: 0.40, name: 'Fósforo', unit: 'unidad' },
+];
+
+// Mapa para convertir palabras numéricas a dígitos
+const NUMBER_WORDS: { [key: string]: number } = {
+  'un': 1, 'una': 1, 'uno': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
+  'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10,
+  'once': 11, 'doce': 12, 'veinte': 20, 'media': 0.5, 'medio': 0.5
 };
 
+function parseQuantity(text: string): { quantity: number, remainingText: string } {
+  text = text.trim();
+  
+  // Intentar encontrar un número al principio (ej: "2", "2.5", "20")
+  const numberMatch = text.match(/^(\d+(\.\d+)?)\s*/);
+  if (numberMatch) {
+    return { 
+      quantity: parseFloat(numberMatch[1]), 
+      remainingText: text.substring(numberMatch[0].length) 
+    };
+  }
 
-const textResponseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        response: {
-            type: Type.STRING,
-            description: "Respuesta en texto plano a una pregunta de precio o una consulta general."
-        }
-    },
-    required: ['response']
-};
+  // Intentar encontrar palabras numéricas (ej: "dos", "una")
+  const words = text.split(' ');
+  const firstWord = words[0].toLowerCase();
+  if (NUMBER_WORDS[firstWord]) {
+    return {
+      quantity: NUMBER_WORDS[firstWord],
+      remainingText: text.substring(firstWord.length).trim()
+    };
+  }
+
+  // Por defecto 1
+  return { quantity: 1, remainingText: text };
+}
+
+function findProduct(text: string): ProductDef | null {
+  const lowerText = text.toLowerCase();
+  // Ordenamos los productos por longitud de keyword descendente para coincidir primero con los más específicos
+  // Ej: coincidir "Aceite Orisol" antes que "Aceite"
+  let bestMatch: ProductDef | null = null;
+  let maxLen = 0;
+
+  for (const prod of PRODUCTS) {
+    for (const keyword of prod.keywords) {
+      if (lowerText.includes(keyword) && keyword.length > maxLen) {
+        maxLen = keyword.length;
+        bestMatch = prod;
+      }
+    }
+  }
+  return bestMatch;
+}
 
 export const generateResponse = async (userInput: string): Promise<Invoice | { response: string }> => {
-  try {
-    if (!process.env.API_KEY) {
-      throw new Error("API_KEY environment variable not set");
-    }
-    
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: userInput,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema: {
-            oneOf: [
-                invoiceSchema,
-                textResponseSchema,
-            ]
-        }
-      },
-    });
+  // Simular delay de red para UX
+  await new Promise(resolve => setTimeout(resolve, 600));
 
-    const text = response.text;
-    if (!text) {
-        throw new Error("La respuesta de la API está vacía.");
-    }
-    
-    const jsonText = text.trim();
-    const parsedJson = JSON.parse(jsonText);
-    return parsedJson;
+  const lowerInput = userInput.toLowerCase();
 
-  } catch (error) {
-    console.error("Error al llamar a la API de Gemini:", error);
-    throw new Error("No se pudo obtener una respuesta del asistente.");
+  // 1. Modo Consulta de Precios
+  const isPriceQuery = lowerInput.includes('precio') || 
+                       lowerInput.includes('cuanto cuesta') || 
+                       lowerInput.includes('cuánto cuesta') ||
+                       lowerInput.includes('vale');
+
+  if (isPriceQuery) {
+    const product = findProduct(lowerInput);
+    if (product) {
+      return { response: `El precio de ${product.name} es $${product.price.toFixed(2)} por ${product.unit}.` };
+    } else {
+      return { response: "Lo siento, no encontré ese producto en la lista de precios." };
+    }
   }
+
+  // 2. Modo Facturación (Parsing del pedido)
+  // Separar por comas, "y", o saltos de línea
+  const segments = userInput.split(/,|\ny\s|\sy\s|\n/g).filter(s => s.trim().length > 0);
+  
+  const invoiceItems: InvoiceItem[] = [];
+  let total = 0;
+  let itemCount = 0;
+
+  for (const segment of segments) {
+    const cleanSegment = segment.replace(/\./g, '').trim(); // Quitar puntos finales
+    if (!cleanSegment) continue;
+
+    const { quantity, remainingText } = parseQuantity(cleanSegment);
+    const product = findProduct(remainingText);
+
+    if (product) {
+      const subtotal = quantity * product.price;
+      invoiceItems.push({
+        quantity: `${quantity} ${quantity > 1 && product.unit !== 'lb' ? product.unit + 's' : product.unit}`,
+        product: product.name,
+        unit_price: product.price,
+        subtotal: subtotal
+      });
+      total += subtotal;
+      itemCount++;
+    }
+  }
+
+  if (itemCount > 0) {
+    return {
+      items: invoiceItems,
+      total_items: invoiceItems.length,
+      grand_total: total
+    };
+  }
+
+  // Si no se detectó nada claro
+  return { 
+    response: "No pude identificar productos en tu mensaje. Intenta decir algo como '2 aceites y 1 libra de arroz' o pregúntame '¿cuánto cuesta el café?'." 
+  };
 };
