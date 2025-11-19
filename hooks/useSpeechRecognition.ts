@@ -81,8 +81,8 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     // Enable continuous mode to prevent mic from stopping after one sentence
     recognition.continuous = true; 
     recognition.interimResults = true;
-    // Usamos español de latinoamérica para mejor detección de términos locales y moneda
-    recognition.lang = 'es-419'; 
+    // Usamos español de México para mejor compatibilidad en Android Latam
+    recognition.lang = 'es-MX'; 
 
     recognition.onstart = () => {
       setIsListening(true);
@@ -98,30 +98,37 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     };
 
     recognition.onresult = (event) => {
-      let finalParts: string[] = [];
-      let interimParts: string[] = [];
+      let finalString = '';
+      let interimString = '';
 
-      // Reconstruct the full transcript from all results in the current session
       for (let i = 0; i < event.results.length; ++i) {
         const result = event.results[i];
-        const text = result[0].transcript.trim();
+        const text = result[0].transcript; // No hacemos trim aquí para preservar espacios naturales
         
-        if (!text) continue; // Skip empty results/noise
-
         if (result.isFinal) {
-          finalParts.push(text);
+          finalString += text;
         } else {
-          interimParts.push(text);
+          interimString += text;
         }
       }
+
+      // Limpieza básica de espacios
+      finalString = finalString.trim();
+      interimString = interimString.trim();
+
+      // CORRECCIÓN ANDROID: Si el texto intermedio empieza con el texto final (eco), lo recortamos
+      if (finalString.length > 0 && interimString.toLowerCase().startsWith(finalString.toLowerCase())) {
+        interimString = interimString.substring(finalString.length).trim();
+      }
+
+      // Unir y limpiar espacios múltiples
+      let fullText = (finalString + ' ' + interimString).replace(/\s+/g, ' ').trim();
       
-      // Join parts ensuring single spaces
-      const finalText = finalParts.join(' ');
-      const interimText = interimParts.join(' ');
-      
-      // Combine and clean extra whitespace
-      let fullText = (finalText + ' ' + interimText).replace(/\s+/g, ' ').trim();
-      
+      // CORRECCIÓN DE REPETICIONES ("una una una"):
+      // Busca cualquier palabra seguida de sí misma una o más veces y la reemplaza por una sola instancia
+      // \b = límite de palabra, (\w+) = palabra capturada, ( \1\b)+ = espacio + la misma palabra repetida 1 o mas veces
+      fullText = fullText.replace(/\b(\w+)( \1\b)+/gi, '$1');
+
       // Capitalize first letter for better readability
       if (fullText.length > 0) {
         fullText = fullText.charAt(0).toUpperCase() + fullText.slice(1);
