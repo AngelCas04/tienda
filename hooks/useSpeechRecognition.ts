@@ -81,7 +81,8 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     // Enable continuous mode to prevent mic from stopping after one sentence
     recognition.continuous = true; 
     recognition.interimResults = true;
-    recognition.lang = 'es-ES'; // Set language to Spanish
+    // Usamos español de latinoamérica para mejor detección de términos locales y moneda
+    recognition.lang = 'es-419'; 
 
     recognition.onstart = () => {
       setIsListening(true);
@@ -97,36 +98,56 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     };
 
     recognition.onresult = (event) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
+      let finalParts: string[] = [];
+      let interimParts: string[] = [];
 
       // Reconstruct the full transcript from all results in the current session
-      // This ensures we don't lose text in continuous mode
       for (let i = 0; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+        const result = event.results[i];
+        const text = result[0].transcript.trim();
+        
+        if (!text) continue; // Skip empty results/noise
+
+        if (result.isFinal) {
+          finalParts.push(text);
         } else {
-          interimTranscript += event.results[i][0].transcript;
+          interimParts.push(text);
         }
       }
       
-      // Add a space if needed between existing final text and new interim text could be handled here,
-      // but mostly the browser handles spacing reasonably well in continuous mode results list.
-      setTranscript(finalTranscript + interimTranscript);
+      // Join parts ensuring single spaces
+      const finalText = finalParts.join(' ');
+      const interimText = interimParts.join(' ');
+      
+      // Combine and clean extra whitespace
+      let fullText = (finalText + ' ' + interimText).replace(/\s+/g, ' ').trim();
+      
+      // Capitalize first letter for better readability
+      if (fullText.length > 0) {
+        fullText = fullText.charAt(0).toUpperCase() + fullText.slice(1);
+      }
+
+      setTranscript(fullText);
     };
     
     recognitionRef.current = recognition;
 
     // Cleanup function to stop recognition if component unmounts
     return () => {
-      recognition.stop();
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
     };
   }, [browserSupportsSpeechRecognition]);
 
   const startListening = () => {
     if (recognitionRef.current && !isListening) {
       setTranscript(''); // Clear previous transcript
-      recognitionRef.current.start();
+      try {
+        recognitionRef.current.start();
+      } catch (error) {
+        console.error("Error starting speech recognition:", error);
+      }
     }
   };
 
