@@ -1,3 +1,4 @@
+
 import { Invoice, InvoiceItem } from '../types';
 
 // Definición de productos con sus palabras clave y precios
@@ -112,6 +113,32 @@ function normalize(text: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+// Función para extraer un precio explícito del texto (ej: "$2.50", "2 dolares")
+function extractExplicitPrice(text: string): { price: number | null, textWithoutPrice: string } {
+  // Regex para formatos de moneda: $2, $ 2.50
+  const currencySymbolRegex = /\$\s*(\d+(\.\d+)?)/;
+  const matchSymbol = text.match(currencySymbolRegex);
+  
+  if (matchSymbol) {
+    const price = parseFloat(matchSymbol[1]);
+    // Removemos el precio encontrado del texto para seguir procesando
+    const textWithoutPrice = text.replace(matchSymbol[0], '').trim();
+    return { price, textWithoutPrice };
+  }
+  
+  // Regex para formatos verbales: 2.50 dolares, 2 dólares, 5 pesos, 5 usd
+  const wordsRegex = /(\d+(\.\d+)?)\s*(dolares|dólares|pesos|usd)/i;
+  const matchWords = text.match(wordsRegex);
+  
+  if (matchWords) {
+    const price = parseFloat(matchWords[1]);
+    const textWithoutPrice = text.replace(matchWords[0], '').trim();
+    return { price, textWithoutPrice };
+  }
+  
+  return { price: null, textWithoutPrice: text };
+}
+
 function parseQuantity(text: string): { quantity: number, remainingText: string } {
   text = text.trim();
   
@@ -165,12 +192,15 @@ export const generateResponse = async (userInput: string): Promise<Invoice | { r
   const normalizedInput = normalize(userInput);
 
   // 1. Modo Consulta de Precios
-  const isPriceQuery = normalizedInput.includes('precio') || 
+  // Solo entramos aquí si NO hay números claros que indiquen un pedido, 
+  // y si hay palabras de pregunta.
+  const isPriceQuery = (normalizedInput.includes('precio') || 
                        normalizedInput.includes('cuanto cuesta') || 
-                       normalizedInput.includes('vale');
+                       normalizedInput.includes('vale')) && 
+                       !/\d/.test(normalizedInput); // Evitar si hay números (probablemente es un pedido con precio)
 
   if (isPriceQuery) {
-    const product = findProduct(userInput); // findProduct hace su propia normalización
+    const product = findProduct(userInput);
     if (product) {
       return { response: `El precio de ${product.name} es $${product.price.toFixed(2)} por ${product.unit}.` };
     } else {
@@ -190,20 +220,53 @@ export const generateResponse = async (userInput: string): Promise<Invoice | { r
     const cleanSegment = segment.replace(/\./g, '').trim(); // Quitar puntos finales
     if (!cleanSegment) continue;
 
-    const { quantity, remainingText } = parseQuantity(cleanSegment);
-    const product = findProduct(remainingText);
+    // PASO 1: Buscar si hay un precio explícito (ej: "$2", "5 dolares")
+    // Esto es prioritario según el requerimiento del usuario.
+    const { price: explicitPrice, textWithoutPrice } = extractExplicitPrice(cleanSegment);
 
+    // PASO 2: Buscar cantidad en el texto restante
+    const { quantity, remainingText } = parseQuantity(textWithoutPrice);
+    
+    // PASO 3: Buscar producto en la base de datos
+    // Limpiamos palabras conectivas comunes como "de" al inicio (ej: "2 dolares DE pan")
+    const productSearchText = remainingText.replace(/^\s*de\s+/i, '').trim();
+    const product = findProduct(productSearchText);
+
+    // LÓGICA DE DECISIÓN
     if (product) {
-      const subtotal = quantity * product.price;
+      // Caso A: Producto encontrado en la lista
+      // Si el usuario dio un precio explícito, lo usamos (override). Si no, precio de lista.
+      const finalUnitPrice = explicitPrice !== null ? explicitPrice : product.price;
+      const subtotal = quantity * finalUnitPrice;
+
       invoiceItems.push({
         quantity: `${quantity} ${quantity > 1 && product.unit !== 'lb' ? product.unit + 's' : product.unit}`,
-        product: product.name,
-        unit_price: product.price,
+        product: product.name + (explicitPrice !== null ? ' (Precio manual)' : ''),
+        unit_price: finalUnitPrice,
+        subtotal: subtotal
+      });
+      total += subtotal;
+      itemCount++;
+    } else if (explicitPrice !== null) {
+      // Caso B: Producto NO encontrado, pero hay precio explícito.
+      // Creamos un ítem "Varios" o con el nombre que haya dicho el usuario.
+      const adHocName = productSearchText.length > 0 
+        ? productSearchText.charAt(0).toUpperCase() + productSearchText.slice(1) 
+        : "Varios";
+      
+      const subtotal = quantity * explicitPrice;
+
+      invoiceItems.push({
+        quantity: quantity.toString(),
+        product: adHocName,
+        unit_price: explicitPrice,
         subtotal: subtotal
       });
       total += subtotal;
       itemCount++;
     }
+    // Caso C: Ni producto ni precio -> Ignoramos el segmento o podríamos intentar inferir, 
+    // pero por seguridad lo omitimos para no inventar cargos.
   }
 
   if (itemCount > 0) {
@@ -216,6 +279,6 @@ export const generateResponse = async (userInput: string): Promise<Invoice | { r
 
   // Si no se detectó nada claro
   return { 
-    response: "No pude identificar productos en tu mensaje. Intenta decir algo como '2 chulas y 1 libra de arroz' o 'ciruela'." 
+    response: "No pude identificar productos ni precios en tu mensaje. Intenta decir algo como '2 chulas', 'ciruela', o '$2 de pan'." 
   };
 };

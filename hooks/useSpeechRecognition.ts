@@ -78,7 +78,8 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     }
 
     const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = false; // Stop after a pause in speech
+    // Enable continuous mode to prevent mic from stopping after one sentence
+    recognition.continuous = true; 
     recognition.interimResults = true;
     recognition.lang = 'es-ES'; // Set language to Spanish
 
@@ -96,10 +97,12 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     };
 
     recognition.onresult = (event) => {
-      let interimTranscript = '';
       let finalTranscript = '';
+      let interimTranscript = '';
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      // Reconstruct the full transcript from all results in the current session
+      // This ensures we don't lose text in continuous mode
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
         } else {
@@ -107,8 +110,9 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
         }
       }
       
-      // Update with final transcript if available, otherwise with interim
-      setTranscript(finalTranscript || interimTranscript);
+      // Add a space if needed between existing final text and new interim text could be handled here,
+      // but mostly the browser handles spacing reasonably well in continuous mode results list.
+      setTranscript(finalTranscript + interimTranscript);
     };
     
     recognitionRef.current = recognition;
