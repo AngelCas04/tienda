@@ -1,0 +1,7 @@
+{
+  "name": "Asistente de Tienda Gemini",
+  "description": "Una aplicación de asistente de punto de venta que utiliza la API de Gemini para generar facturas a partir de pedidos de clientes por texto o voz, basada en una lista de precios predefinida.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
