@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ProductDef } from '../types';
@@ -9,6 +8,8 @@ import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { SaveIcon } from './icons/SaveIcon';
 import { XIcon } from './icons/XIcon';
+import { DownloadIcon } from './icons/DownloadIcon';
+import { UploadIcon } from './icons/UploadIcon';
 
 interface AdminPanelProps {
   products: ProductDef[];
@@ -16,9 +17,13 @@ interface AdminPanelProps {
   onEdit: (id: string, p: Partial<ProductDef>) => void;
   onDelete: (id: string) => void;
   onReset: () => void;
+  onExport: () => void;
+  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDelete, onReset }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ 
+  products, onAdd, onEdit, onDelete, onReset, onExport, onImport 
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductDef | null>(null);
@@ -87,14 +92,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDele
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-20">
+    <div className="min-h-screen bg-slate-900 text-slate-100 pb-24">
       {/* Header */}
       <header className="bg-slate-800 p-4 sticky top-0 z-10 shadow-md flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link to="/" className="p-2 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white">
             <BackIcon className="w-6 h-6" />
           </Link>
-          <h1 className="text-xl font-bold text-cyan-400">Administrar Productos</h1>
+          <h1 className="text-xl font-bold text-cyan-400">Administrar</h1>
         </div>
         <button 
             onClick={onReset}
@@ -104,9 +109,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDele
         </button>
       </header>
 
-      <main className="p-4 max-w-4xl mx-auto">
+      <main className="p-4 max-w-4xl mx-auto space-y-6">
         {/* Search Bar */}
-        <div className="relative mb-6">
+        <div className="relative">
           <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
           <input 
             type="text"
@@ -121,17 +126,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDele
         <div className="space-y-3">
           {filteredProducts.map(prod => (
             <div key={prod.id} className="bg-slate-800 rounded-lg p-4 flex items-center justify-between shadow-sm border border-slate-700">
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">{prod.name}</h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-lg truncate">{prod.name}</h3>
                 <div className="text-sm text-slate-400 flex flex-wrap gap-2 mt-1">
                   <span className="text-cyan-400 font-mono">${prod.price.toFixed(2)}</span>
                   <span>/ {prod.unit}</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1 truncate">
-                  Keywords: {prod.keywords.join(', ')}
-                </p>
               </div>
-              <div className="flex items-center gap-2 ml-4">
+              <div className="flex items-center gap-2 ml-2">
                 <button 
                   onClick={() => handleOpenModal(prod)}
                   className="p-2 text-cyan-400 hover:bg-cyan-400/10 rounded-full"
@@ -154,12 +156,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDele
             </div>
           )}
         </div>
+
+        {/* Data Management Section */}
+        <div className="mt-8 pt-6 border-t border-slate-700">
+            <h2 className="text-lg font-bold text-cyan-400 mb-4">Gestión de Datos</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                    onClick={onExport}
+                    className="bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-200 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                >
+                    <DownloadIcon className="w-5 h-5" />
+                    Exportar Respaldo
+                </button>
+                <label className="bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-200 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                    <UploadIcon className="w-5 h-5" />
+                    Importar Respaldo
+                    <input type="file" accept=".json" onChange={onImport} className="hidden" />
+                </label>
+            </div>
+            <p className="text-xs text-slate-500 mt-2 text-center sm:text-left">
+                Descarga un archivo JSON para guardar tus precios en un lugar seguro o transferirlos a otro dispositivo.
+            </p>
+        </div>
       </main>
 
       {/* FAB Add Button */}
       <button 
         onClick={() => handleOpenModal()}
-        className="fixed bottom-6 right-6 bg-cyan-500 hover:bg-cyan-600 text-slate-900 p-4 rounded-full shadow-lg shadow-cyan-500/20 transition-transform active:scale-95"
+        className="fixed bottom-6 right-6 bg-cyan-500 hover:bg-cyan-600 text-slate-900 p-4 rounded-full shadow-lg shadow-cyan-500/20 transition-transform active:scale-95 z-20"
       >
         <PlusIcon className="w-7 h-7" />
       </button>
@@ -167,8 +191,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDele
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-slate-800 rounded-xl w-full max-w-md border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+          <div className="bg-slate-800 rounded-xl w-full max-w-md border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-slate-700 flex justify-between items-center sticky top-0 bg-slate-800 z-10">
               <h2 className="text-lg font-bold text-white">
                 {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
               </h2>
@@ -217,11 +241,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDele
 
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Palabras Clave (separar por comas)</label>
-                <input 
-                  type="text"
+                <textarea 
+                  rows={3}
                   value={formData.keywords}
                   onChange={e => setFormData({...formData, keywords: e.target.value})}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 focus:border-cyan-500 focus:outline-none"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 focus:border-cyan-500 focus:outline-none resize-none"
                   placeholder="arroz, precocido, blanco"
                 />
                 <p className="text-xs text-slate-500 mt-1">Ayuda al asistente a reconocer el producto.</p>
