@@ -157,11 +157,12 @@ export const generateResponse = async (userInput: string): Promise<Invoice | { r
       },
     });
 
-    const jsonText = response.text.trim();
-    if (!jsonText) {
+    const text = response.text;
+    if (!text) {
         throw new Error("La respuesta de la API está vacía.");
     }
-
+    
+    const jsonText = text.trim();
     const parsedJson = JSON.parse(jsonText);
     return parsedJson;
 
