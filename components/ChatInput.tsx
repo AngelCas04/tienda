@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import useSpeechRecognition from '../hooks/useSpeechRecognition';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { MicIcon } from './icons/MicIcon';
 import { SendIcon } from './icons/SendIcon';
 
@@ -11,17 +11,24 @@ interface ChatInputProps {
 
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   const [text, setText] = useState('');
+  
   const {
-    isListening,
     transcript,
-    startListening,
-    stopListening,
-    browserSupportsSpeechRecognition,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
+  // Sincronizar y limpiar el transcript con el input
   useEffect(() => {
     if (transcript) {
-      setText(transcript);
+      // 1. Eliminar repeticiones contiguas: "una una una" -> "una"
+      let cleanText = transcript.replace(/\b(\w+)( \1\b)+/gi, '$1');
+      
+      // 2. Capitalizar primera letra
+      cleanText = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
+
+      setText(cleanText);
     }
   }, [transcript]);
 
@@ -30,17 +37,23 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     if (text.trim() && !isLoading) {
       onSendMessage(text);
       setText('');
+      resetTranscript();
     }
   };
   
   const handleMicClick = () => {
-    if (isListening) {
-      stopListening();
+    if (listening) {
+      SpeechRecognition.stopListening();
     } else {
       setText('');
-      startListening();
+      resetTranscript();
+      SpeechRecognition.startListening({ continuous: true, language: 'es-MX' });
     }
   };
+
+  if (!browserSupportsSpeechRecognition) {
+    return <span>Navegador no compatible con voz.</span>;
+  }
 
   return (
     <form
@@ -51,24 +64,24 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={isListening ? 'Escuchando...' : 'Escribe tu pedido aquí...'}
+        placeholder={listening ? 'Escuchando...' : 'Escribe tu pedido aquí...'}
         className="flex-1 bg-transparent focus:outline-none px-4 py-2 placeholder-slate-500"
-        disabled={isLoading || isListening}
+        disabled={isLoading}
       />
-      {browserSupportsSpeechRecognition && (
-         <button
-            type="button"
-            onClick={handleMicClick}
-            disabled={isLoading}
-            className={`p-2 rounded-full transition-colors duration-200 ${
-              isListening
-                ? 'bg-red-500 text-white animate-pulse'
-                : 'bg-cyan-500 hover:bg-cyan-600 text-slate-900'
-            } disabled:bg-slate-600 disabled:cursor-not-allowed`}
-          >
-           <MicIcon className="w-6 h-6" />
-        </button>
-      )}
+      
+      <button
+        type="button"
+        onClick={handleMicClick}
+        disabled={isLoading}
+        className={`p-2 rounded-full transition-colors duration-200 ${
+            listening
+            ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]'
+            : 'bg-cyan-500 hover:bg-cyan-600 text-slate-900'
+        } disabled:bg-slate-600 disabled:cursor-not-allowed`}
+        >
+        <MicIcon className="w-6 h-6" />
+      </button>
+
       <button
         type="submit"
         disabled={isLoading || !text.trim()}
