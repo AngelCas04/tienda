@@ -19,3 +19,11 @@ export interface Message {
   invoice?: Invoice;
   isLoading?: boolean;
 }
+
+export interface ProductDef {
+  id: string;
+  keywords: string[];
+  price: number;
+  name: string;
+  unit: string;
+}
