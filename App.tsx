@@ -1,8 +1,10 @@
+
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useProducts } from './hooks/useProducts';
 import ChatInterface from './components/ChatInterface';
 import AdminPanel from './components/AdminPanel';
+import SalesDashboard from './components/SalesDashboard';
 
 const App: React.FC = () => {
   const { 
@@ -23,6 +25,7 @@ const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<ChatInterface products={products} />} />
+      <Route path="/ventas" element={<SalesDashboard />} />
       <Route path="/admin" element={
         <AdminPanel 
           products={products}

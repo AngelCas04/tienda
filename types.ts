@@ -18,6 +18,7 @@ export interface Message {
   text?: string;
   invoice?: Invoice;
   isLoading?: boolean;
+  onRegisterSale?: (invoice: Invoice) => void; // Callback para registrar venta
 }
 
 export interface ProductDef {
@@ -26,4 +27,12 @@ export interface ProductDef {
   price: number;
   name: string;
   unit: string;
+}
+
+export interface Sale {
+  id?: number; // ID autogenerado por IndexedDB
+  date: string; // ISO String
+  timestamp: number;
+  items: InvoiceItem[];
+  total: number;
 }

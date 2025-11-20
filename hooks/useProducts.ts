@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { ProductDef } from '../types';
 import { DEFAULT_PRODUCTS } from '../constants';
 import { getAllProducts, saveProduct, deleteProductFromDB, clearProductsDB, bulkSaveProducts } from '../services/db';
