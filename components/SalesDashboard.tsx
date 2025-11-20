@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSales } from '../hooks/useSales';
 import { BackIcon } from './icons/BackIcon';
-import { MoneyIcon } from './icons/MoneyIcon';
 import { CheckCircleIcon } from './icons/CheckCircleIcon';
 import { CalculatorIcon } from './icons/CalculatorIcon';
 import { BarChartIcon } from './icons/BarChartIcon';

@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Sale } from '../types';
-import { addSaleToDB, getSalesByDateRange, getAllSales } from '../services/db';
+import { addSaleToDB, getSalesByDateRange } from '../services/db';
 
 export const useSales = () => {
   const [todayTotal, setTodayTotal] = useState(0);
