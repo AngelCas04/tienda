@@ -21,7 +21,8 @@ const DB_VERSION = 2; // Incrementamos versión para añadir store de ventas
 
 export const initDB = async () => {
   return openDB<TiendaDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, newVersion, transaction) {
+    // Usamos guión bajo para indicar variables no usadas y evitar errores de TS
+    upgrade(db, _oldVersion, _newVersion, _transaction) {
       // Store de Productos
       if (!db.objectStoreNames.contains(STORE_PRODUCTS)) {
         db.createObjectStore(STORE_PRODUCTS, { keyPath: 'id' });
