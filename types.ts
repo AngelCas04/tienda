@@ -18,7 +18,6 @@ export interface Message {
   text?: string;
   invoice?: Invoice;
   isLoading?: boolean;
-  onRegisterSale?: (invoice: Invoice) => void; // Callback para registrar venta
 }
 
 export interface ProductDef {
@@ -33,6 +32,7 @@ export interface Sale {
   id?: number; // ID autogenerado por IndexedDB
   date: string; // ISO String
   timestamp: number;
-  items: InvoiceItem[];
+  items?: InvoiceItem[]; // Opcional para ventas manuales
   total: number;
+  note?: string; // Nota opcional (ej: "Venta manual")
 }

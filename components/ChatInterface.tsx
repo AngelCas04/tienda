@@ -3,7 +3,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Message, Invoice, ProductDef } from '../types';
 import { generateResponse } from '../services/geminiService';
-import { useSales } from '../hooks/useSales';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 import { initialMessage } from '../constants';
@@ -19,7 +18,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ products }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const { registerSale } = useSales();
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,11 +26,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ products }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  const handleRegisterSale = async (invoice: Invoice) => {
-      await registerSale(invoice);
-      // Opcional: Mostrar toast o feedback global
-  };
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
@@ -55,7 +48,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ products }) => {
           id: (Date.now() + 1).toString(),
           sender: 'ai',
           invoice: aiResponse as Invoice,
-          onRegisterSale: handleRegisterSale
         };
       } else {
         aiMessage = {

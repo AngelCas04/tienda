@@ -5,14 +5,27 @@ import { useSales } from '../hooks/useSales';
 import { BackIcon } from './icons/BackIcon';
 import { MoneyIcon } from './icons/MoneyIcon';
 import { CheckCircleIcon } from './icons/CheckCircleIcon';
+import { CalculatorIcon } from './icons/CalculatorIcon';
+import { BarChartIcon } from './icons/BarChartIcon';
+import { PlusIcon } from './icons/PlusIcon';
 
 const SalesDashboard: React.FC = () => {
-  const { todayTotal, weekTotal, monthTotal, recentSales, isLoading } = useSales();
+  const { todayTotal, weekTotal, monthTotal, recentSales, weeklyData, addManualSale, isLoading } = useSales();
+  const [activeTab, setActiveTab] = useState<'register' | 'dashboard'>('register');
+  const [manualAmount, setManualAmount] = useState('');
   const [showCutAnimation, setShowCutAnimation] = useState(false);
+
+  const handleAddSale = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const amount = parseFloat(manualAmount);
+      if (amount > 0) {
+          await addManualSale(amount, "Venta manual");
+          setManualAmount('');
+      }
+  };
 
   const handleEndOfDay = () => {
     setShowCutAnimation(true);
-    // Ocultar animación después de 3 segundos
     setTimeout(() => {
       setShowCutAnimation(false);
     }, 3500);
@@ -29,7 +42,7 @@ const SalesDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-6 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-900 text-slate-100 pb-20 relative overflow-hidden">
       
       {/* Header */}
       <header className="bg-slate-800 p-4 sticky top-0 z-10 shadow-md flex items-center gap-3">
@@ -39,75 +52,140 @@ const SalesDashboard: React.FC = () => {
         <h1 className="text-xl font-bold text-cyan-400">Gestión de Ventas</h1>
       </header>
 
-      <main className="p-4 max-w-4xl mx-auto space-y-6">
+      {/* Tabs Navigation */}
+      <div className="flex border-b border-slate-700 bg-slate-800/50">
+          <button 
+            onClick={() => setActiveTab('register')}
+            className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
+                activeTab === 'register' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400'
+            }`}
+          >
+              <CalculatorIcon className="w-4 h-4" /> Caja
+          </button>
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
+                activeTab === 'dashboard' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400'
+            }`}
+          >
+              <BarChartIcon className="w-4 h-4" /> Dashboard
+          </button>
+      </div>
+
+      <main className="p-4 max-w-md mx-auto space-y-6">
         
-        {/* Resumen Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Hoy */}
-          <div className="bg-gradient-to-br from-cyan-600/20 to-slate-800 border border-cyan-500/30 p-5 rounded-xl shadow-lg">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-slate-400 text-sm uppercase font-semibold tracking-wider">Venta Diaria</p>
-                <h2 className="text-3xl font-bold text-white mt-1">{formatCurrency(todayTotal)}</h2>
-              </div>
-              <div className="p-2 bg-cyan-500/20 rounded-full text-cyan-400">
-                <MoneyIcon className="w-6 h-6" />
-              </div>
-            </div>
-            <div className="mt-4 w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
-              <div className="bg-cyan-500 h-full rounded-full" style={{ width: '100%' }}></div>
-            </div>
-          </div>
+        {/* VISTA DE CAJA (REGISTRO) */}
+        {activeTab === 'register' && (
+            <div className="space-y-6 animate-fadeIn">
+                {/* Input Grande */}
+                <form onSubmit={handleAddSale} className="bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700 text-center">
+                    <label className="block text-slate-400 text-sm mb-2 font-medium">Ingresar Monto de Venta</label>
+                    <div className="relative max-w-[200px] mx-auto">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-cyan-500 text-3xl font-bold">$</span>
+                        <input 
+                            type="number" 
+                            step="0.01" 
+                            inputMode="decimal"
+                            value={manualAmount}
+                            onChange={(e) => setManualAmount(e.target.value)}
+                            className="w-full bg-transparent border-b-2 border-cyan-500/50 focus:border-cyan-500 text-4xl font-bold text-white py-2 pl-8 focus:outline-none"
+                            placeholder="0.00"
+                            autoFocus
+                        />
+                    </div>
+                    <button 
+                        type="submit"
+                        disabled={!manualAmount}
+                        className="mt-6 w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-cyan-900/20 transition-all flex items-center justify-center gap-2"
+                    >
+                        <PlusIcon className="w-5 h-5" /> AGREGAR
+                    </button>
+                </form>
 
-          {/* Semana */}
-          <div className="bg-slate-800 border border-slate-700 p-5 rounded-xl shadow-md">
-            <p className="text-slate-400 text-sm uppercase font-semibold tracking-wider">Esta Semana</p>
-            <h2 className="text-2xl font-bold text-slate-200 mt-1">{formatCurrency(weekTotal)}</h2>
-            <p className="text-xs text-slate-500 mt-2">Acumulado semanal</p>
-          </div>
-
-          {/* Mes */}
-          <div className="bg-slate-800 border border-slate-700 p-5 rounded-xl shadow-md">
-            <p className="text-slate-400 text-sm uppercase font-semibold tracking-wider">Este Mes</p>
-            <h2 className="text-2xl font-bold text-slate-200 mt-1">{formatCurrency(monthTotal)}</h2>
-            <p className="text-xs text-slate-500 mt-2">Acumulado mensual</p>
-          </div>
-        </div>
-
-        {/* Botón Corte del Día */}
-        <button
-            onClick={handleEndOfDay}
-            className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-green-900/20 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-        >
-            <CheckCircleIcon className="w-6 h-6" />
-            REALIZAR CORTE DEL DÍA
-        </button>
-
-        {/* Historial Reciente */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-          <h3 className="p-4 bg-slate-800/80 border-b border-slate-700 font-semibold text-lg text-slate-200">
-            Últimas Ventas
-          </h3>
-          <div className="divide-y divide-slate-700">
-            {recentSales.length === 0 ? (
-              <p className="p-6 text-center text-slate-500">No hay ventas registradas hoy.</p>
-            ) : (
-              recentSales.map((sale) => (
-                <div key={sale.id} className="p-4 flex justify-between items-center hover:bg-slate-700/30 transition-colors">
-                  <div>
-                    <p className="text-slate-300 font-medium">
-                        {sale.items.length} {sale.items.length === 1 ? 'producto' : 'productos'}
-                    </p>
-                    <p className="text-xs text-slate-500">{formatDate(sale.timestamp)}</p>
-                  </div>
-                  <span className="text-cyan-400 font-bold font-mono">
-                    {formatCurrency(sale.total)}
-                  </span>
+                {/* Total Hoy y Corte */}
+                <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
+                    <div>
+                        <p className="text-xs text-slate-400 uppercase font-bold">Total Hoy</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(todayTotal)}</p>
+                    </div>
+                    <button 
+                        onClick={handleEndOfDay}
+                        className="bg-green-600 hover:bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-lg shadow-md flex items-center gap-2"
+                    >
+                        <CheckCircleIcon className="w-4 h-4" /> CORTE
+                    </button>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+
+                {/* Lista de Hoy */}
+                <div>
+                    <h3 className="text-sm text-slate-500 font-bold mb-3 uppercase">Movimientos de Hoy</h3>
+                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden max-h-64 overflow-y-auto">
+                        {recentSales.length === 0 ? (
+                             <p className="p-4 text-center text-slate-500 text-sm">Sin ventas hoy.</p>
+                        ) : (
+                            <div className="divide-y divide-slate-700">
+                                {recentSales.map((sale) => (
+                                    <div key={sale.id} className="p-3 flex justify-between items-center">
+                                        <div>
+                                            <p className="text-slate-300 text-sm font-medium">
+                                                {sale.note || (sale.items ? 'Venta chat' : 'Venta manual')}
+                                            </p>
+                                            <p className="text-xs text-slate-500">{formatDate(sale.timestamp)}</p>
+                                        </div>
+                                        <span className="text-cyan-400 font-bold font-mono">
+                                            {formatCurrency(sale.total)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* VISTA DASHBOARD (GRÁFICAS) */}
+        {activeTab === 'dashboard' && (
+            <div className="space-y-6 animate-fadeIn">
+                
+                {/* Gráfica Semanal */}
+                <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-md">
+                    <h3 className="text-slate-200 font-bold mb-4 flex items-center gap-2">
+                        <BarChartIcon className="w-5 h-5 text-cyan-500" />
+                        Ventas Últimos 7 Días
+                    </h3>
+                    <div className="h-48 flex items-end justify-between gap-2">
+                        {weeklyData.map((d, i) => (
+                            <div key={i} className="flex flex-col items-center gap-2 flex-1 group">
+                                <div className="w-full bg-slate-700/30 rounded-t-md relative h-32 flex items-end justify-center">
+                                    <div 
+                                        className="w-full bg-cyan-500 rounded-t-sm transition-all duration-500 hover:bg-cyan-400 relative group-hover:shadow-[0_0_10px_rgba(6,182,212,0.5)]"
+                                        style={{ height: `${Math.max(d.height, 5)}%` }}
+                                    ></div>
+                                    {/* Tooltip */}
+                                    <div className="absolute -top-8 bg-slate-900 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity border border-slate-600 whitespace-nowrap z-10">
+                                        {formatCurrency(d.total)}
+                                    </div>
+                                </div>
+                                <span className="text-xs text-slate-400 font-medium">{d.day}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Resumen Cards */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <p className="text-slate-500 text-xs uppercase font-bold">Semana</p>
+                        <p className="text-xl font-bold text-white mt-1">{formatCurrency(weekTotal)}</p>
+                    </div>
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <p className="text-slate-500 text-xs uppercase font-bold">Mes</p>
+                        <p className="text-xl font-bold text-white mt-1">{formatCurrency(monthTotal)}</p>
+                    </div>
+                </div>
+            </div>
+        )}
       </main>
 
       {/* Animación de Corte */}
@@ -126,7 +204,7 @@ const SalesDashboard: React.FC = () => {
                         <p className="text-sm text-slate-500 uppercase">Total del Día</p>
                         <p className="text-4xl font-black font-mono mt-1">{formatCurrency(todayTotal)}</p>
                     </div>
-                    <p className="text-xs text-slate-400">Guardado en base de datos</p>
+                    <p className="text-xs text-slate-400">Caja cuadrada correctamente</p>
                 </div>
 
                 {/* Efecto papel roto abajo */}
