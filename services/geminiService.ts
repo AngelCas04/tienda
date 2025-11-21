@@ -120,7 +120,7 @@ export const generateResponse = async (userInput: string, products: Product[]): 
   let itemCount = 0;
 
   for (const segment of segments) {
-    const cleanSegment = segment.replace(/\./g, '').trim(); // Quitar puntos finales
+    const cleanSegment = segment.replace(/\.+$/g, '').trim(); // Quitar solo puntos al final
     if (!cleanSegment) continue;
 
     // PASO 1: Buscar si hay un precio explícito
@@ -136,7 +136,7 @@ export const generateResponse = async (userInput: string, products: Product[]): 
     // LÓGICA DE DECISIÓN
     if (product) {
       const finalUnitPrice = explicitPrice !== null ? explicitPrice : product.price;
-      const subtotal = quantity * finalUnitPrice;
+      const subtotal = Math.round((quantity * finalUnitPrice) * 100) / 100; // Redondear a 2 decimales
 
       invoiceItems.push({
         quantity: `${quantity} ${quantity > 1 && product.unit !== 'lb' ? product.unit + 's' : product.unit}`,
@@ -151,7 +151,7 @@ export const generateResponse = async (userInput: string, products: Product[]): 
         ? productSearchText.charAt(0).toUpperCase() + productSearchText.slice(1)
         : "Varios";
 
-      const subtotal = quantity * explicitPrice;
+      const subtotal = Math.round((quantity * explicitPrice) * 100) / 100; // Redondear a 2 decimales
 
       invoiceItems.push({
         quantity: quantity.toString(),
@@ -168,7 +168,7 @@ export const generateResponse = async (userInput: string, products: Product[]): 
     return {
       items: invoiceItems,
       total_items: invoiceItems.length,
-      grand_total: total
+      grand_total: Math.round(total * 100) / 100 // Redondear total final a 2 decimales
     };
   }
 
