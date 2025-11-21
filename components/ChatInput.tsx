@@ -105,7 +105,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex items-center gap-2 md:gap-4 p-2 rounded-full bg-dark-surface border border-dark-border shadow-lg transition-all focus-within:ring-2 focus-within:ring-primary-500/50 focus-within:border-primary-500"
+      className="flex items-center gap-1 sm:gap-2 md:gap-4 p-1.5 sm:p-2 rounded-full bg-dark-surface border border-dark-border shadow-lg transition-all focus-within:ring-2 focus-within:ring-primary-500/50 focus-within:border-primary-500"
     >
       <input
         type="text"
@@ -115,26 +115,26 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
           setSegments([]);
           setText(newText);
         }}
-        placeholder={listening ? 'Escuchando... (pausa 0.8s entre productos)' : 'Escribe tu pedido aquí...'}
-        className="flex-1 bg-transparent focus:outline-none px-4 py-3 placeholder-slate-500 text-slate-200 text-sm"
+        placeholder={listening ? 'Escuchando...' : 'Escribe aquí...'}
+        className="flex-1 bg-transparent focus:outline-none px-2 sm:px-4 py-2 sm:py-3 placeholder-slate-500 text-slate-200 text-xs sm:text-sm"
         disabled={isLoading}
       />
 
       {(fullText || segments.length > 0) && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           {segments.length > 0 && (
-            <span className="text-xs text-primary-400 font-mono bg-primary-500/10 px-2 py-1 rounded">
-              {segments.length} producto{segments.length > 1 ? 's' : ''}
+            <span className="hidden sm:inline-flex text-xs text-primary-400 font-mono bg-primary-500/10 px-2 py-1 rounded">
+              {segments.length}
             </span>
           )}
           <button
             type="button"
             onClick={handleClear}
             disabled={isLoading}
-            className="p-2 rounded-full text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1.5 sm:p-2 rounded-full text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             title="Limpiar"
           >
-            <XIcon className="w-4 h-4" />
+            <XIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
       )}
@@ -143,22 +143,22 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
         type="button"
         onClick={handleMicClick}
         disabled={isLoading}
-        className={`p-3 rounded-full transition-all duration-300 ${listening
+        className={`p-2 sm:p-3 rounded-full transition-all duration-300 ${listening
           ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]'
           : 'bg-dark-bg hover:bg-dark-surface border border-dark-border text-slate-400 hover:text-primary-400'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
-        title={listening ? 'Detener grabación' : 'Iniciar grabación'}
+        title={listening ? 'Detener' : 'Grabar'}
       >
-        <MicIcon className="w-5 h-5" />
+        <MicIcon className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
 
       <button
         type="submit"
         disabled={isLoading || !fullText.trim()}
-        className="p-3 rounded-full bg-gradient-to-r from-primary-600 to-secondary-600 hover:from-primary-500 hover:to-secondary-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white shadow-lg shadow-primary-900/20 transform active:scale-95 transition-all duration-200"
+        className="p-2 sm:p-3 rounded-full bg-gradient-to-r from-primary-600 to-secondary-600 hover:from-primary-500 hover:to-secondary-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white shadow-lg shadow-primary-900/20 transform active:scale-95 transition-all duration-200"
         title="Enviar"
       >
-        <SendIcon className="w-5 h-5" />
+        <SendIcon className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
     </form>
   );
