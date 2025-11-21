@@ -1,11 +1,11 @@
 
 import { openDB, DBSchema } from 'idb';
-import { ProductDef, Sale } from '../types';
+import { Product, Sale } from '../types';
 
 interface TiendaDB extends DBSchema {
   products: {
     key: string;
-    value: ProductDef;
+    value: Product;
   };
   sales: {
     key: number;
@@ -39,12 +39,12 @@ export const initDB = async () => {
 
 // --- PRODUCTOS ---
 
-export const getAllProducts = async (): Promise<ProductDef[]> => {
+export const getAllProducts = async (): Promise<Product[]> => {
   const db = await initDB();
   return db.getAll(STORE_PRODUCTS);
 };
 
-export const saveProduct = async (product: ProductDef) => {
+export const saveProduct = async (product: Product) => {
   const db = await initDB();
   await db.put(STORE_PRODUCTS, product);
 };
@@ -55,18 +55,18 @@ export const deleteProductFromDB = async (id: string) => {
 };
 
 export const clearProductsDB = async () => {
-    const db = await initDB();
-    await db.clear(STORE_PRODUCTS);
+  const db = await initDB();
+  await db.clear(STORE_PRODUCTS);
 }
 
-export const bulkSaveProducts = async (products: ProductDef[]) => {
-    const db = await initDB();
-    const tx = db.transaction(STORE_PRODUCTS, 'readwrite');
-    const store = tx.objectStore(STORE_PRODUCTS);
-    await Promise.all([
-        ...products.map(p => store.put(p)),
-        tx.done
-    ]);
+export const bulkSaveProducts = async (products: Product[]) => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_PRODUCTS, 'readwrite');
+  const store = tx.objectStore(STORE_PRODUCTS);
+  await Promise.all([
+    ...products.map(p => store.put(p)),
+    tx.done
+  ]);
 }
 
 // --- VENTAS ---
@@ -83,6 +83,6 @@ export const getSalesByDateRange = async (startTimestamp: number, endTimestamp: 
 };
 
 export const getAllSales = async (): Promise<Sale[]> => {
-    const db = await initDB();
-    return db.getAll(STORE_SALES);
+  const db = await initDB();
+  return db.getAll(STORE_SALES);
 };

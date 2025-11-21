@@ -20,12 +20,15 @@ export interface Message {
   isLoading?: boolean;
 }
 
-export interface ProductDef {
+export interface Product {
   id: string;
   keywords: string[];
   price: number;
   name: string;
   unit: string;
+  category: string;
+  stock: number;
+  description?: string;
 }
 
 export interface Sale {

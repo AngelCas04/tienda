@@ -1,259 +1,210 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ProductDef } from '../types';
-import { BackIcon } from './icons/BackIcon';
-import { SearchIcon } from './icons/SearchIcon';
-import { PlusIcon } from './icons/PlusIcon';
-import { EditIcon } from './icons/EditIcon';
-import { TrashIcon } from './icons/TrashIcon';
+import { Product } from '../types';
 import { SaveIcon } from './icons/SaveIcon';
 import { XIcon } from './icons/XIcon';
-import { DownloadIcon } from './icons/DownloadIcon';
-import { UploadIcon } from './icons/UploadIcon';
 
 interface AdminPanelProps {
-  products: ProductDef[];
-  onAdd: (p: Omit<ProductDef, 'id'>) => void;
-  onEdit: (id: string, p: Partial<ProductDef>) => void;
+  products: Product[];
+  onAdd: (product: Omit<Product, 'id'>) => void;
+  onEdit: (id: string, product: Partial<Product>) => void;
   onDelete: (id: string) => void;
   onReset: () => void;
   onExport: () => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ 
-  products, onAdd, onEdit, onDelete, onReset, onExport, onImport 
-}) => {
-  const [searchTerm, setSearchTerm] = useState('');
+const AdminPanel: React.FC<AdminPanelProps> = ({ products, onAdd, onEdit, onDelete, onReset, onExport, onImport }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<ProductDef | null>(null);
-  
-  // Estado del formulario
-  const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    unit: '',
-    keywords: ''
-  });
-
-  const filteredProducts = useMemo(() => {
-    const lowerSearch = searchTerm.toLowerCase();
-    return products.filter(p => 
-      p.name.toLowerCase().includes(lowerSearch) || 
-      p.keywords.some(k => k.toLowerCase().includes(lowerSearch))
-    );
-  }, [products, searchTerm]);
-
-  const handleOpenModal = (product?: ProductDef) => {
-    if (product) {
-      setEditingProduct(product);
-      setFormData({
-        name: product.name,
-        price: product.price.toString(),
-        unit: product.unit,
-        keywords: product.keywords.join(', ')
-      });
-    } else {
-      setEditingProduct(null);
-      setFormData({
-        name: '',
-        price: '',
-        unit: 'unidad',
-        keywords: ''
-      });
-    }
-    setIsModalOpen(true);
-  };
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [formData, setFormData] = useState({ name: '', price: '', unit: '', keywords: '', category: '', stock: '' });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const keywordsArray = formData.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
-    const priceNum = parseFloat(formData.price);
-
-    if (!formData.name || isNaN(priceNum)) return;
+    const productData = {
+      name: formData.name,
+      price: parseFloat(formData.price),
+      unit: formData.unit,
+      keywords: formData.keywords.split(',').map(k => k.trim()),
+      category: formData.category,
+      stock: parseInt(formData.stock) || 0,
+      description: ''
+    };
 
     if (editingProduct) {
-      onEdit(editingProduct.id, {
-        name: formData.name,
-        price: priceNum,
-        unit: formData.unit,
-        keywords: keywordsArray
-      });
+      onEdit(editingProduct.id, productData);
     } else {
-      onAdd({
-        name: formData.name,
-        price: priceNum,
-        unit: formData.unit,
-        keywords: keywordsArray
-      });
+      onAdd(productData);
     }
     setIsModalOpen(false);
+    setFormData({ name: '', price: '', unit: '', keywords: '', category: '', stock: '' });
+    setEditingProduct(null);
+  };
+
+  const openEdit = (product: Product) => {
+    setEditingProduct(product);
+    setFormData({
+      name: product.name,
+      price: product.price.toString(),
+      unit: product.unit || '',
+      keywords: product.keywords?.join(', ') || '',
+      category: product.category,
+      stock: product.stock?.toString() || ''
+    });
+    setIsModalOpen(true);
+  };
+
+  const openNew = () => {
+    setEditingProduct(null);
+    setFormData({ name: '', price: '', unit: '', keywords: '', category: '', stock: '' });
+    setIsModalOpen(true);
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-24">
-      {/* Header */}
-      <header className="bg-slate-800 p-4 sticky top-0 z-10 shadow-md flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="p-2 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white">
-            <BackIcon className="w-6 h-6" />
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans p-4 md:p-8">
+      <div className="max-w-6xl mx-auto space-y-8">
+
+        <header className="flex justify-between items-center bg-slate-800/50 p-6 rounded-2xl backdrop-blur-sm border border-slate-700/50 shadow-lg">
+          <div>
+            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">Panel de Administración</h1>
+            <p className="text-slate-400 text-sm mt-1">Gestiona tu inventario y productos</p>
+          </div>
+          <Link to="/" className="px-6 py-2 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-300 transition-all border border-slate-600 hover:border-slate-500 shadow-md">
+            Volver al Chat
           </Link>
-          <h1 className="text-xl font-bold text-cyan-400">Administrar</h1>
-        </div>
-        <button 
-            onClick={onReset}
-            className="text-xs text-red-400 hover:text-red-300 underline"
-        >
-            Restaurar Todo
-        </button>
-      </header>
+        </header>
 
-      <main className="p-4 max-w-4xl mx-auto space-y-6">
-        {/* Search Bar */}
-        <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-          <input 
-            type="text"
-            placeholder="Buscar producto..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-full py-3 pl-10 pr-4 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-          />
+        <div className="flex flex-wrap gap-4 p-4 bg-slate-800/30 rounded-xl border border-slate-700/30">
+          <button onClick={onReset} className="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors text-sm font-medium">
+            Restaurar Defaults
+          </button>
+          <button onClick={onExport} className="px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-medium">
+            Exportar JSON
+          </button>
+          <label className="px-4 py-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-medium cursor-pointer">
+            Importar JSON
+            <input type="file" accept=".json" onChange={onImport} className="hidden" />
+          </label>
+          <button onClick={openNew} className="ml-auto px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg shadow-lg shadow-cyan-900/20 transition-all transform hover:scale-105 font-bold">
+            + Nuevo Producto
+          </button>
         </div>
 
-        {/* Product List */}
-        <div className="space-y-3">
-          {filteredProducts.map(prod => (
-            <div key={prod.id} className="bg-slate-800 rounded-lg p-4 flex items-center justify-between shadow-sm border border-slate-700">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg truncate">{prod.name}</h3>
-                <div className="text-sm text-slate-400 flex flex-wrap gap-2 mt-1">
-                  <span className="text-cyan-400 font-mono">${prod.price.toFixed(2)}</span>
-                  <span>/ {prod.unit}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 ml-2">
-                <button 
-                  onClick={() => handleOpenModal(prod)}
-                  className="p-2 text-cyan-400 hover:bg-cyan-400/10 rounded-full"
-                >
-                  <EditIcon className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={() => { if(confirm('¿Borrar producto?')) onDelete(prod.id) }}
-                  className="p-2 text-red-400 hover:bg-red-400/10 rounded-full"
-                >
-                  <TrashIcon className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          ))}
-          
-          {filteredProducts.length === 0 && (
-            <div className="text-center text-slate-500 py-10">
-              No se encontraron productos.
-            </div>
-          )}
+        {/* Lista de Productos */}
+        <div className="bg-slate-800 rounded-xl shadow-xl overflow-hidden border border-slate-700">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-900/50 text-slate-400 uppercase text-xs font-semibold tracking-wider">
+                <tr>
+                  <th className="p-5">Nombre</th>
+                  <th className="p-5">Precio</th>
+                  <th className="p-5">Stock</th>
+                  <th className="p-5">Categoría</th>
+                  <th className="p-5 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {products.map(product => (
+                  <tr key={product.id} className="hover:bg-slate-700/30 transition-colors group">
+                    <td className="p-5 font-medium text-slate-200">{product.name}</td>
+                    <td className="p-5 text-cyan-400 font-mono">${product.price.toFixed(2)}</td>
+                    <td className="p-5">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${(product.stock || 0) > 10 ? 'bg-green-500/20 text-green-400' :
+                          (product.stock || 0) > 0 ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-red-500/20 text-red-400'
+                        }`}>
+                        {product.stock || 0}
+                      </span>
+                    </td>
+                    <td className="p-5 text-slate-400">{product.category}</td>
+                    <td className="p-5 text-right space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEdit(product)} className="text-blue-400 hover:text-blue-300 font-medium text-sm">Editar</button>
+                      <button onClick={() => onDelete(product.id)} className="text-red-400 hover:text-red-300 font-medium text-sm">Eliminar</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+      </div>
 
-        {/* Data Management Section */}
-        <div className="mt-8 pt-6 border-t border-slate-700">
-            <h2 className="text-lg font-bold text-cyan-400 mb-4">Gestión de Datos</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                    onClick={onExport}
-                    className="bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-200 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                >
-                    <DownloadIcon className="w-5 h-5" />
-                    Exportar Respaldo
-                </button>
-                <label className="bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-200 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer">
-                    <UploadIcon className="w-5 h-5" />
-                    Importar Respaldo
-                    <input type="file" accept=".json" onChange={onImport} className="hidden" />
-                </label>
-            </div>
-            <p className="text-xs text-slate-500 mt-2 text-center sm:text-left">
-                Descarga un archivo JSON para guardar tus precios en un lugar seguro o transferirlos a otro dispositivo.
-            </p>
-        </div>
-      </main>
-
-      {/* FAB Add Button */}
-      <button 
-        onClick={() => handleOpenModal()}
-        className="fixed bottom-6 right-6 bg-cyan-500 hover:bg-cyan-600 text-slate-900 p-4 rounded-full shadow-lg shadow-cyan-500/20 transition-transform active:scale-95 z-20"
-      >
-        <PlusIcon className="w-7 h-7" />
-      </button>
-
-      {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-slate-800 rounded-xl w-full max-w-md border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b border-slate-700 flex justify-between items-center sticky top-0 bg-slate-800 z-10">
-              <h2 className="text-lg font-bold text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto animate-slide-up">
+            <div className="p-5 border-b border-slate-700 flex justify-between items-center sticky top-0 bg-slate-800 z-10">
+              <h2 className="text-xl font-bold text-white">
                 {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
                 <XIcon className="w-6 h-6" />
               </button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Nombre</label>
-                <input 
+                <label className="block text-sm font-medium text-slate-400 mb-1.5">Nombre del Producto</label>
+                <input
                   required
                   type="text"
                   value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 focus:border-cyan-500 focus:outline-none"
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none transition-all"
                   placeholder="Ej: Arroz Blanco"
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Precio ($)</label>
-                  <input 
+                  <label className="block text-sm font-medium text-slate-400 mb-1.5">Precio ($)</label>
+                  <input
                     required
                     type="number"
                     step="0.01"
                     value={formData.price}
-                    onChange={e => setFormData({...formData, price: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 focus:border-cyan-500 focus:outline-none"
+                    onChange={e => setFormData({ ...formData, price: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none transition-all"
                     placeholder="0.00"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Unidad</label>
-                  <input 
-                    type="text"
-                    value={formData.unit}
-                    onChange={e => setFormData({...formData, unit: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 focus:border-cyan-500 focus:outline-none"
-                    placeholder="unidad, lb, caja"
+                  <label className="block text-sm font-medium text-slate-400 mb-1.5">Stock</label>
+                  <input
+                    type="number"
+                    value={formData.stock}
+                    onChange={e => setFormData({ ...formData, stock: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none transition-all"
+                    placeholder="0"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Palabras Clave (separar por comas)</label>
-                <textarea 
+                <label className="block text-sm font-medium text-slate-400 mb-1.5">Categoría</label>
+                <input
+                  type="text"
+                  value={formData.category}
+                  onChange={e => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none transition-all"
+                  placeholder="Ej: Granos"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1.5">Palabras Clave (separar por comas)</label>
+                <textarea
                   rows={3}
                   value={formData.keywords}
-                  onChange={e => setFormData({...formData, keywords: e.target.value})}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 focus:border-cyan-500 focus:outline-none resize-none"
+                  onChange={e => setFormData({ ...formData, keywords: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none resize-none transition-all"
                   placeholder="arroz, precocido, blanco"
                 />
                 <p className="text-xs text-slate-500 mt-1">Ayuda al asistente a reconocer el producto.</p>
               </div>
 
-              <button 
+              <button
                 type="submit"
-                className="w-full bg-cyan-500 hover:bg-cyan-600 text-slate-900 font-bold py-3 rounded-lg mt-4 flex items-center justify-center gap-2"
+                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3 rounded-lg mt-4 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20 transition-all transform active:scale-95"
               >
                 <SaveIcon className="w-5 h-5" />
                 Guardar Producto

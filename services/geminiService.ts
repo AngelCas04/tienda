@@ -1,5 +1,5 @@
 
-import { Invoice, InvoiceItem, ProductDef } from '../types';
+import { Invoice, InvoiceItem, Product } from '../types';
 
 // Mapa para convertir palabras numéricas a dígitos
 const NUMBER_WORDS: { [key: string]: number } = {
@@ -24,36 +24,36 @@ function extractExplicitPrice(text: string): { price: number | null, textWithout
   // Regex para formatos de moneda: $2, $ 2.50
   const currencySymbolRegex = /\$\s*(\d+(\.\d+)?)/;
   const matchSymbol = text.match(currencySymbolRegex);
-  
+
   if (matchSymbol) {
     const price = parseFloat(matchSymbol[1]);
     // Removemos el precio encontrado del texto para seguir procesando
     const textWithoutPrice = text.replace(matchSymbol[0], '').trim();
     return { price, textWithoutPrice };
   }
-  
+
   // Regex para formatos verbales: 2.50 dolares, 2 dólares, 5 pesos, 5 usd
   const wordsRegex = /(\d+(\.\d+)?)\s*(dolares|dólares|pesos|usd)/i;
   const matchWords = text.match(wordsRegex);
-  
+
   if (matchWords) {
     const price = parseFloat(matchWords[1]);
     const textWithoutPrice = text.replace(matchWords[0], '').trim();
     return { price, textWithoutPrice };
   }
-  
+
   return { price: null, textWithoutPrice: text };
 }
 
 function parseQuantity(text: string): { quantity: number, remainingText: string } {
   text = text.trim();
-  
+
   // Intentar encontrar un número al principio (ej: "2", "2.5", "20")
   const numberMatch = text.match(/^(\d+(\.\d+)?)\s*/);
   if (numberMatch) {
-    return { 
-      quantity: parseFloat(numberMatch[1]), 
-      remainingText: text.substring(numberMatch[0].length) 
+    return {
+      quantity: parseFloat(numberMatch[1]),
+      remainingText: text.substring(numberMatch[0].length)
     };
   }
 
@@ -71,11 +71,11 @@ function parseQuantity(text: string): { quantity: number, remainingText: string 
   return { quantity: 1, remainingText: text };
 }
 
-function findProduct(text: string, productList: ProductDef[]): ProductDef | null {
+function findProduct(text: string, productList: Product[]): Product | null {
   const normalizedText = normalize(text);
-  
+
   // Ordenamos los productos por coincidencia de keyword para priorizar las más específicas o largas
-  let bestMatch: ProductDef | null = null;
+  let bestMatch: Product | null = null;
   let maxLen = 0;
 
   for (const prod of productList) {
@@ -91,17 +91,17 @@ function findProduct(text: string, productList: ProductDef[]): ProductDef | null
   return bestMatch;
 }
 
-export const generateResponse = async (userInput: string, products: ProductDef[]): Promise<Invoice | { response: string }> => {
+export const generateResponse = async (userInput: string, products: Product[]): Promise<Invoice | { response: string }> => {
   // Simular delay de red para UX
   await new Promise(resolve => setTimeout(resolve, 400));
 
   const normalizedInput = normalize(userInput);
 
   // 1. Modo Consulta de Precios
-  const isPriceQuery = (normalizedInput.includes('precio') || 
-                       normalizedInput.includes('cuanto cuesta') || 
-                       normalizedInput.includes('vale')) && 
-                       !/\d/.test(normalizedInput); // Evitar si hay números
+  const isPriceQuery = (normalizedInput.includes('precio') ||
+    normalizedInput.includes('cuanto cuesta') ||
+    normalizedInput.includes('vale')) &&
+    !/\d/.test(normalizedInput); // Evitar si hay números
 
   if (isPriceQuery) {
     const product = findProduct(userInput, products);
@@ -114,7 +114,7 @@ export const generateResponse = async (userInput: string, products: ProductDef[]
 
   // 2. Modo Facturación (Parsing del pedido)
   const segments = userInput.split(/,|\ny\s|\sy\s|\n/g).filter(s => s.trim().length > 0);
-  
+
   const invoiceItems: InvoiceItem[] = [];
   let total = 0;
   let itemCount = 0;
@@ -128,7 +128,7 @@ export const generateResponse = async (userInput: string, products: ProductDef[]
 
     // PASO 2: Buscar cantidad
     const { quantity, remainingText } = parseQuantity(textWithoutPrice);
-    
+
     // PASO 3: Buscar producto
     const productSearchText = remainingText.replace(/^\s*de\s+/i, '').trim();
     const product = findProduct(productSearchText, products);
@@ -147,10 +147,10 @@ export const generateResponse = async (userInput: string, products: ProductDef[]
       total += subtotal;
       itemCount++;
     } else if (explicitPrice !== null) {
-      const adHocName = productSearchText.length > 0 
-        ? productSearchText.charAt(0).toUpperCase() + productSearchText.slice(1) 
+      const adHocName = productSearchText.length > 0
+        ? productSearchText.charAt(0).toUpperCase() + productSearchText.slice(1)
         : "Varios";
-      
+
       const subtotal = quantity * explicitPrice;
 
       invoiceItems.push({
@@ -172,7 +172,7 @@ export const generateResponse = async (userInput: string, products: ProductDef[]
     };
   }
 
-  return { 
-    response: "No pude identificar productos ni precios en tu mensaje. Intenta decir algo como '2 chulas', 'ciruela', o '$2 de pan'." 
+  return {
+    response: "No pude identificar productos ni precios en tu mensaje. Intenta decir algo como '2 chulas', 'ciruela', o '$2 de pan'."
   };
 };

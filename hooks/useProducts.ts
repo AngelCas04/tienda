@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { ProductDef } from '../types';
+import { Product } from '../types';
 import { DEFAULT_PRODUCTS } from '../constants';
 import { getAllProducts, saveProduct, deleteProductFromDB, clearProductsDB, bulkSaveProducts } from '../services/db';
 
 export const useProducts = () => {
-  const [products, setProducts] = useState<ProductDef[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Cargar al inicio desde DB
@@ -31,8 +31,8 @@ export const useProducts = () => {
     loadProducts();
   }, []);
 
-  const addProduct = async (product: Omit<ProductDef, 'id'>) => {
-    const newProduct: ProductDef = {
+  const addProduct = async (product: Omit<Product, 'id'>) => {
+    const newProduct: Product = {
       ...product,
       id: Date.now().toString(),
     };
@@ -42,12 +42,12 @@ export const useProducts = () => {
     await saveProduct(newProduct);
   };
 
-  const updateProduct = async (id: string, updated: Partial<ProductDef>) => {
+  const updateProduct = async (id: string, updated: Partial<Product>) => {
     const current = products.find(p => p.id === id);
     if (!current) return;
 
     const updatedProduct = { ...current, ...updated };
-    
+
     setProducts(prev => prev.map(p => p.id === id ? updatedProduct : p));
     await saveProduct(updatedProduct);
   };
@@ -58,53 +58,53 @@ export const useProducts = () => {
   };
 
   const resetProducts = async () => {
-    if(confirm("¿Estás seguro de que quieres restaurar la lista de productos por defecto? Se perderán tus cambios actuales.")) {
-        setProducts(DEFAULT_PRODUCTS);
-        await clearProductsDB();
-        await bulkSaveProducts(DEFAULT_PRODUCTS);
+    if (confirm("¿Estás seguro de que quieres restaurar la lista de productos por defecto? Se perderán tus cambios actuales.")) {
+      setProducts(DEFAULT_PRODUCTS);
+      await clearProductsDB();
+      await bulkSaveProducts(DEFAULT_PRODUCTS);
     }
   };
 
   const exportProducts = () => {
-      const dataStr = JSON.stringify(products, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tienda_respaldo_${new Date().toISOString().slice(0,10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    const dataStr = JSON.stringify(products, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tienda_respaldo_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const importProducts = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-          try {
-              const json = JSON.parse(event.target?.result as string);
-              // Validación básica
-              if (Array.isArray(json) && json.every(p => p.id && p.name && p.price !== undefined)) {
-                  if (confirm(`¿Importar ${json.length} productos? Esto reemplazará la lista actual.`)) {
-                      setProducts(json);
-                      await clearProductsDB();
-                      await bulkSaveProducts(json);
-                      alert('Importación exitosa');
-                  }
-              } else {
-                  alert('El archivo no tiene el formato correcto de productos.');
-              }
-          } catch (err) {
-              console.error(err);
-              alert('Error al leer el archivo');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        // Validación básica
+        if (Array.isArray(json) && json.every(p => p.id && p.name && p.price !== undefined)) {
+          if (confirm(`¿Importar ${json.length} productos? Esto reemplazará la lista actual.`)) {
+            setProducts(json);
+            await clearProductsDB();
+            await bulkSaveProducts(json);
+            alert('Importación exitosa');
           }
-      };
-      reader.readAsText(file);
-      // Resetear el input para permitir cargar el mismo archivo si es necesario
-      e.target.value = '';
+        } else {
+          alert('El archivo no tiene el formato correcto de productos.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error al leer el archivo');
+      }
+    };
+    reader.readAsText(file);
+    // Resetear el input para permitir cargar el mismo archivo si es necesario
+    e.target.value = '';
   };
 
   return {

@@ -1,43 +1,53 @@
-
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useProducts } from './hooks/useProducts';
-import ChatInterface from './components/ChatInterface';
-import AdminPanel from './components/AdminPanel';
-import SalesDashboard from './components/SalesDashboard';
+
+// Lazy loading components
+const ChatInterface = React.lazy(() => import('./components/ChatInterface'));
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
+const SalesDashboard = React.lazy(() => import('./components/SalesDashboard'));
+
+const LoadingSpinner = () => (
+  <div className="h-screen flex flex-col items-center justify-center bg-dark-bg text-primary-400">
+    <div className="w-12 h-12 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mb-4"></div>
+    <p className="animate-pulse font-medium">Cargando experiencia...</p>
+  </div>
+);
 
 const App: React.FC = () => {
-  const { 
-    products, 
-    addProduct, 
-    updateProduct, 
-    deleteProduct, 
-    resetProducts, 
+  const {
+    products,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    resetProducts,
     exportProducts,
     importProducts,
-    isLoaded 
+    isLoaded
   } = useProducts();
 
   if (!isLoaded) {
-    return <div className="h-screen flex items-center justify-center bg-slate-900 text-cyan-500">Cargando datos...</div>;
+    return <LoadingSpinner />;
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<ChatInterface products={products} />} />
-      <Route path="/ventas" element={<SalesDashboard />} />
-      <Route path="/admin" element={
-        <AdminPanel 
-          products={products}
-          onAdd={addProduct}
-          onEdit={updateProduct}
-          onDelete={deleteProduct}
-          onReset={resetProducts}
-          onExport={exportProducts}
-          onImport={importProducts}
-        />
-      } />
-    </Routes>
+    <Suspense fallback={<LoadingSpinner />}>
+      <Routes>
+        <Route path="/" element={<ChatInterface products={products} />} />
+        <Route path="/ventas" element={<SalesDashboard />} />
+        <Route path="/admin" element={
+          <AdminPanel
+            products={products}
+            onAdd={addProduct}
+            onEdit={updateProduct}
+            onDelete={deleteProduct}
+            onReset={resetProducts}
+            onExport={exportProducts}
+            onImport={importProducts}
+          />
+        } />
+      </Routes>
+    </Suspense>
   );
 };
 
