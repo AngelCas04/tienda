@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import React, { useState, useEffect } from 'react';
+import useVoiceRecorder from '../hooks/useVoiceRecorder';
 import { MicIcon } from './icons/MicIcon';
 import { SendIcon } from './icons/SendIcon';
 import { XIcon } from './icons/XIcon';
@@ -12,95 +12,93 @@ interface ChatInputProps {
 
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   const [text, setText] = useState('');
-  const [segments, setSegments] = useState<string[]>([]);
-  const lastTranscriptRef = useRef('');
-  const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
+    recordingState,
     transcript,
-    listening,
-    resetTranscript,
-    browserSupportsSpeechRecognition
-  } = useSpeechRecognition();
+    startRecording,
+    stopRecording,
+    resetRecording,
+    error
+  } = useVoiceRecorder();
 
-  // Detectar pausas y separar productos automáticamente
+  // Actualizar el texto cuando se complete la grabación
   useEffect(() => {
-    if (!listening) return;
-
-    if (transcript && transcript !== lastTranscriptRef.current) {
-      // Limpiar timer anterior
-      if (pauseTimerRef.current) {
-        clearTimeout(pauseTimerRef.current);
-      }
-
-      // Limpiar repeticiones
-      let cleanText = transcript.replace(/\b(\w+)( \1\b)+/gi, '$1');
-      cleanText = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
-
-      // Actualizar texto actual
-      setText(cleanText);
-      lastTranscriptRef.current = transcript;
-
-      // Detectar pausa de 0.8 segundos para agregar como nuevo segmento
-      pauseTimerRef.current = setTimeout(() => {
-        if (cleanText.trim()) {
-          setSegments(prev => [...prev, cleanText.trim()]);
-          setText(''); // Limpiar texto después de agregar segmento
-          resetTranscript();
-          lastTranscriptRef.current = '';
-        }
-      }, 800); // 0.8 segundos - más rápido para ventas
+    if (recordingState === 'completed' && transcript) {
+      setText(transcript);
     }
-  }, [transcript, listening, resetTranscript]);
-
-  // Combinar segmentos con comas
-  const fullText = segments.length > 0
-    ? segments.join(', ') + (text.trim() ? ', ' + text : '')
-    : text;
+  }, [recordingState, transcript]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalText = fullText.trim();
+    const finalText = text.trim();
     if (finalText && !isLoading) {
       onSendMessage(finalText);
       setText('');
-      setSegments([]);
-      resetTranscript();
-      lastTranscriptRef.current = '';
+      resetRecording();
     }
   };
 
-  const handleMicClick = () => {
-    if (listening) {
-      SpeechRecognition.stopListening();
-      if (pauseTimerRef.current) {
-        clearTimeout(pauseTimerRef.current);
-      }
-    } else {
-      setSegments([]);
+  const handleMicClick = async () => {
+    if (recordingState === 'recording') {
+      // Detener grabación y procesar
+      stopRecording();
+    } else if (recordingState === 'idle' || recordingState === 'completed' || recordingState === 'error') {
+      // Iniciar nueva grabación
       setText('');
-      resetTranscript();
-      lastTranscriptRef.current = '';
-      SpeechRecognition.startListening({ continuous: true, language: 'es-MX' });
+      await startRecording();
     }
   };
 
   const handleClear = () => {
     setText('');
-    setSegments([]);
-    resetTranscript();
-    lastTranscriptRef.current = '';
-    if (listening) {
-      SpeechRecognition.stopListening();
-    }
-    if (pauseTimerRef.current) {
-      clearTimeout(pauseTimerRef.current);
+    resetRecording();
+  };
+
+  // Determinar el placeholder según el estado
+  const getPlaceholder = () => {
+    switch (recordingState) {
+      case 'recording':
+        return 'Grabando... (habla de corrido: cantidad, unidad, producto)';
+      case 'processing':
+        return 'Procesando grabación...';
+      case 'error':
+        return error || 'Error al grabar';
+      default:
+        return 'Escribe o presiona el micrófono para grabar...';
     }
   };
 
-  if (!browserSupportsSpeechRecognition) {
-    return <span className="text-slate-500 text-sm">Navegador no compatible con voz.</span>;
-  }
+  // Determinar el estilo del botón de micrófono
+  const getMicButtonClass = () => {
+    const baseClass = 'p-2 sm:p-3 rounded-full transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed';
+
+    switch (recordingState) {
+      case 'recording':
+        return `${baseClass} bg-red-500 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.6)]`;
+      case 'processing':
+        return `${baseClass} bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)]`;
+      case 'error':
+        return `${baseClass} bg-yellow-500 text-white`;
+      default:
+        return `${baseClass} bg-dark-bg hover:bg-dark-surface border border-dark-border text-slate-400 hover:text-primary-400`;
+    }
+  };
+
+  // Determinar el título del botón de micrófono
+  const getMicButtonTitle = () => {
+    switch (recordingState) {
+      case 'recording':
+        return 'Detener y procesar';
+      case 'processing':
+        return 'Procesando...';
+      default:
+        return 'Grabar voz';
+    }
+  };
+
+  // NO mostrar transcripción en tiempo real - solo el texto del input
+  const displayText = text;
 
   return (
     <form
@@ -109,57 +107,81 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     >
       <input
         type="text"
-        value={fullText}
+        value={displayText}
         onChange={(e) => {
-          const newText = e.target.value;
-          setSegments([]);
-          setText(newText);
+          if (recordingState === 'idle' || recordingState === 'completed') {
+            setText(e.target.value);
+          }
         }}
-        placeholder={listening ? 'Escuchando...' : 'Escribe aquí...'}
+        placeholder={getPlaceholder()}
         className="flex-1 bg-transparent focus:outline-none px-2 sm:px-4 py-2 sm:py-3 placeholder-slate-500 text-slate-200 text-xs sm:text-sm"
-        disabled={isLoading}
+        disabled={isLoading || recordingState === 'recording' || recordingState === 'processing'}
+        readOnly={recordingState === 'recording' || recordingState === 'processing'}
       />
 
-      {(fullText || segments.length > 0) && (
-        <div className="flex items-center gap-0.5 sm:gap-1">
-          {segments.length > 0 && (
-            <span className="hidden sm:inline-flex text-xs text-primary-400 font-mono bg-primary-500/10 px-2 py-1 rounded">
-              {segments.length}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={handleClear}
-            disabled={isLoading}
-            className="p-1.5 sm:p-2 rounded-full text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Limpiar"
-          >
-            <XIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+      {/* Mostrar error si existe */}
+      {error && recordingState === 'error' && (
+        <span className="hidden sm:inline-block text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded">
+          {error}
+        </span>
+      )}
+
+      {/* Botón de limpiar */}
+      {(displayText || recordingState !== 'idle') && recordingState !== 'processing' && (
+        <button
+          type="button"
+          onClick={handleClear}
+          disabled={isLoading || recordingState === 'processing'}
+          className="p-1.5 sm:p-2 rounded-full text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Limpiar"
+        >
+          <XIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+      )}
+
+      {/* Indicador de grabación */}
+      {recordingState === 'recording' && (
+        <div className="hidden sm:flex items-center gap-1">
+          <div className="flex gap-0.5">
+            <span className="w-1 h-4 bg-red-400 rounded-full animate-[soundwave_0.6s_ease-in-out_infinite]" />
+            <span className="w-1 h-4 bg-red-400 rounded-full animate-[soundwave_0.6s_ease-in-out_0.1s_infinite]" />
+            <span className="w-1 h-4 bg-red-400 rounded-full animate-[soundwave_0.6s_ease-in-out_0.2s_infinite]" />
+          </div>
         </div>
       )}
 
+      {/* Botón de micrófono */}
       <button
         type="button"
         onClick={handleMicClick}
-        disabled={isLoading}
-        className={`p-2 sm:p-3 rounded-full transition-all duration-300 ${listening
-          ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]'
-          : 'bg-dark-bg hover:bg-dark-surface border border-dark-border text-slate-400 hover:text-primary-400'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-        title={listening ? 'Detener' : 'Grabar'}
+        disabled={isLoading || recordingState === 'processing'}
+        className={getMicButtonClass()}
+        title={getMicButtonTitle()}
       >
-        <MicIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+        {recordingState === 'processing' ? (
+          <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <MicIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+        )}
       </button>
 
+      {/* Botón de enviar */}
       <button
         type="submit"
-        disabled={isLoading || !fullText.trim()}
+        disabled={isLoading || !displayText.trim() || recordingState === 'recording' || recordingState === 'processing'}
         className="p-2 sm:p-3 rounded-full bg-gradient-to-r from-primary-600 to-secondary-600 hover:from-primary-500 hover:to-secondary-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white shadow-lg shadow-primary-900/20 transform active:scale-95 transition-all duration-200"
         title="Enviar"
       >
         <SendIcon className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
+
+      {/* Estilos para la animación de onda de sonido */}
+      <style>{`
+        @keyframes soundwave {
+          0%, 100% { height: 1rem; opacity: 0.6; }
+          50% { height: 1.5rem; opacity: 1; }
+        }
+      `}</style>
     </form>
   );
 };
