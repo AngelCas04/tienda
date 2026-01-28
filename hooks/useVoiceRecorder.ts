@@ -30,6 +30,8 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
 
     const recognitionRef = useRef<any>(null);
     const fullTranscriptRef = useRef<string>('');
+    const isRecordingRef = useRef<boolean>(false);
+    const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     /**
      * Normaliza números hablados a dígitos
@@ -72,7 +74,7 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
 
     /**
      * Detecta productos basándose en el patrón: número + unidad + nombre_producto
-     * Ejemplo: "2 libras de arroz 3 libras de frijoles" -> ["2 libras de arroz", "3 libras de frijoles"]
+     * Mejorado para detectar TODOS los productos sin límite
      */
     const detectProducts = useCallback((text: string): string[] => {
         // Normalizar números primero
@@ -81,49 +83,54 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         // Limpiar repeticiones de palabras
         normalized = normalized.replace(/\b(\w+)( \1\b)+/gi, '$1');
 
-        // Patrones comunes de unidades
+        console.log('Texto normalizado:', normalized);
+
+        // Patrones comunes de unidades (más completo)
         const units = [
             'libras?', 'lb', 'lbs',
-            'kilos?', 'kg', 'kgs',
+            'kilos?', 'kg', 'kgs', 'kilogramos?',
             'gramos?', 'gr', 'grs',
             'onzas?', 'oz',
             'unidades?', 'piezas?',
             'cajas?', 'paquetes?',
             'bolsas?', 'sacos?',
-            'litros?', 'lts?',
-            'galones?', 'gal'
+            'litros?', 'lts?', 'l',
+            'galones?', 'gal',
+            'metros?', 'mts?',
+            'docenas?'
         ].join('|');
 
-        // Patrón: número (decimal o entero) + unidad + "de" (opcional) + producto
-        // Ejemplo: "2 libras arroz", "1.5 kg de frijoles", "3 unidades pan"
-        const productPattern = new RegExp(
-            `(\\d+(?:\\.\\d+)?)\\s+(${units})\\s+(?:de\\s+)?([\\w\\s]+?)(?=\\s*\\d+\\s+(?:${units})|$)`,
+        const products: string[] = [];
+
+        // Estrategia 1: Patrón completo con unidad
+        // Ejemplo: "2 libras arroz", "1.5 kg de frijoles"
+        const patternWithUnit = new RegExp(
+            `(\\d+(?:\\.\\d+)?)\\s+(${units})\\s+(?:de\\s+)?([^\\d]+?)(?=\\s*\\d+\\s+(?:${units})|$)`,
             'gi'
         );
 
-        const products: string[] = [];
         let match;
+        const usedIndices: number[] = [];
 
-        while ((match = productPattern.exec(normalized)) !== null) {
+        while ((match = patternWithUnit.exec(normalized)) !== null) {
             const quantity = match[1];
             const unit = match[2];
             const productName = match[3].trim();
 
-            // Capitalizar primera letra del producto
-            const capitalizedProduct = productName.charAt(0).toUpperCase() + productName.slice(1);
-
-            products.push(`${quantity} ${unit} ${capitalizedProduct}`);
+            if (productName.length > 0) {
+                const capitalizedProduct = productName.charAt(0).toUpperCase() + productName.slice(1);
+                products.push(`${quantity} ${unit} ${capitalizedProduct}`);
+                usedIndices.push(match.index);
+            }
         }
 
-        // Si no se detectaron productos con el patrón, intentar un enfoque más simple
+        // Estrategia 2: Si no encontramos con unidades, buscar solo números + texto
         if (products.length === 0) {
-            // Buscar solo números seguidos de texto
             const simplePattern = /(\d+(?:\.\d+)?)\s+([^\d]+?)(?=\s*\d+|$)/gi;
-            let simpleMatch;
 
-            while ((simpleMatch = simplePattern.exec(normalized)) !== null) {
-                const quantity = simpleMatch[1];
-                const rest = simpleMatch[2].trim();
+            while ((match = simplePattern.exec(normalized)) !== null) {
+                const quantity = match[1];
+                const rest = match[2].trim();
 
                 if (rest.length > 0) {
                     const capitalizedRest = rest.charAt(0).toUpperCase() + rest.slice(1);
@@ -132,8 +139,82 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             }
         }
 
-        return products.length > 0 ? products : [normalized.charAt(0).toUpperCase() + normalized.slice(1)];
+        console.log('Productos detectados:', products);
+
+        // Si aún no hay productos, devolver el texto normalizado completo
+        if (products.length === 0 && normalized.trim().length > 0) {
+            return [normalized.charAt(0).toUpperCase() + normalized.slice(1)];
+        }
+
+        return products;
     }, [normalizeNumbers]);
+
+    /**
+     * Reinicia el reconocimiento automáticamente para grabaciones largas
+     */
+    const restartRecognition = useCallback(() => {
+        if (!isRecordingRef.current || !SpeechRecognitionAPI) {
+            return;
+        }
+
+        try {
+            const recognition = new SpeechRecognitionAPI();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'es-MX';
+
+            recognition.onresult = (event: any) => {
+                let newText = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        newText += event.results[i][0].transcript + ' ';
+                    }
+                }
+
+                // ACUMULAR al texto existente, no reemplazar
+                if (newText.trim()) {
+                    fullTranscriptRef.current = (fullTranscriptRef.current + ' ' + newText).trim();
+                    console.log('Texto acumulado:', fullTranscriptRef.current);
+                }
+            };
+
+            recognition.onerror = (event: any) => {
+                console.error('Error de reconocimiento:', event.error);
+
+                if (event.error !== 'no-speech' && event.error !== 'aborted' && isRecordingRef.current) {
+                    // Reintentar después de un error menor
+                    if (restartTimeoutRef.current) {
+                        clearTimeout(restartTimeoutRef.current);
+                    }
+                    restartTimeoutRef.current = setTimeout(() => {
+                        if (isRecordingRef.current) {
+                            restartRecognition();
+                        }
+                    }, 100);
+                }
+            };
+
+            recognition.onend = () => {
+                console.log('Reconocimiento finalizado, reiniciando...');
+                // Reiniciar automáticamente si aún estamos grabando
+                if (isRecordingRef.current) {
+                    if (restartTimeoutRef.current) {
+                        clearTimeout(restartTimeoutRef.current);
+                    }
+                    restartTimeoutRef.current = setTimeout(() => {
+                        if (isRecordingRef.current) {
+                            restartRecognition();
+                        }
+                    }, 100);
+                }
+            };
+
+            recognitionRef.current = recognition;
+            recognition.start();
+        } catch (err) {
+            console.error('Error al reiniciar reconocimiento:', err);
+        }
+    }, []);
 
     /**
      * Inicia la grabación de audio
@@ -149,74 +230,52 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             setError(null);
             setRecordingState('recording');
             fullTranscriptRef.current = '';
+            isRecordingRef.current = true;
             setTranscript('');
 
-            const recognition = new SpeechRecognitionAPI();
-            recognition.continuous = true;
-            recognition.interimResults = false; // Solo resultados finales, no interim
-            recognition.lang = 'es-MX';
-
-            recognition.onstart = () => {
-                console.log('Grabación iniciada');
-            };
-
-            recognition.onresult = (event: any) => {
-                // Acumular todos los resultados finales
-                let finalText = '';
-                for (let i = 0; i < event.results.length; i++) {
-                    if (event.results[i].isFinal) {
-                        finalText += event.results[i][0].transcript + ' ';
-                    }
-                }
-
-                // Guardar en referencia pero NO mostrar en tiempo real
-                fullTranscriptRef.current = finalText.trim();
-            };
-
-            recognition.onerror = (event: any) => {
-                console.error('Error de reconocimiento:', event.error);
-
-                // Ignorar errores de "no-speech" durante la grabación
-                if (event.error !== 'no-speech' && event.error !== 'aborted') {
-                    setError(`Error: ${event.error}`);
-                    setRecordingState('error');
-                }
-            };
-
-            recognition.onend = () => {
-                console.log('Reconocimiento finalizado');
-            };
-
-            recognitionRef.current = recognition;
-            recognition.start();
+            // Iniciar el reconocimiento con reinicio automático
+            restartRecognition();
 
         } catch (err) {
             console.error('Error al iniciar grabación:', err);
             setError('No se pudo iniciar la grabación. Verifica los permisos del micrófono.');
             setRecordingState('error');
+            isRecordingRef.current = false;
         }
-    }, []);
+    }, [restartRecognition]);
 
     /**
      * Detiene la grabación y procesa el resultado final
      */
     const stopRecording = useCallback(() => {
-        if (!recognitionRef.current || recordingState !== 'recording') {
+        if (!isRecordingRef.current || recordingState !== 'recording') {
             return;
         }
 
+        console.log('Deteniendo grabación...');
+        isRecordingRef.current = false;
         setRecordingState('processing');
 
-        // Detener reconocimiento
-        try {
-            recognitionRef.current.stop();
-        } catch (e) {
-            console.error('Error al detener reconocimiento:', e);
+        // Limpiar timeout de reinicio
+        if (restartTimeoutRef.current) {
+            clearTimeout(restartTimeoutRef.current);
+            restartTimeoutRef.current = null;
         }
 
-        // Procesar resultado después de un breve delay para asegurar que se capturó todo
+        // Detener reconocimiento
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.stop();
+            } catch (e) {
+                console.error('Error al detener reconocimiento:', e);
+            }
+        }
+
+        // Procesar resultado después de un delay para asegurar que se capturó todo
         setTimeout(() => {
             const rawText = fullTranscriptRef.current;
+
+            console.log('Texto completo capturado:', rawText);
 
             if (!rawText || rawText.trim().length === 0) {
                 setError('No se detectó ningún audio. Intenta de nuevo.');
@@ -228,6 +287,8 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             // Detectar productos por patrón
             const products = detectProducts(rawText);
 
+            console.log('Productos finales:', products);
+
             // Unir con comas
             const finalText = products.join(', ');
 
@@ -235,8 +296,8 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             setRecordingState('completed');
             recognitionRef.current = null;
 
-            console.log('Texto procesado:', finalText);
-        }, 500); // Delay de 500ms para asegurar que se procesó todo
+            console.log('Texto procesado final:', finalText);
+        }, 800); // Delay de 800ms para asegurar que se procesó todo
 
     }, [recordingState, detectProducts]);
 
@@ -244,6 +305,14 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
      * Reinicia el estado del grabador
      */
     const resetRecording = useCallback(() => {
+        isRecordingRef.current = false;
+
+        // Limpiar timeout
+        if (restartTimeoutRef.current) {
+            clearTimeout(restartTimeoutRef.current);
+            restartTimeoutRef.current = null;
+        }
+
         // Detener reconocimiento si está activo
         if (recognitionRef.current) {
             try {
@@ -264,6 +333,12 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
     // Cleanup al desmontar
     useEffect(() => {
         return () => {
+            isRecordingRef.current = false;
+
+            if (restartTimeoutRef.current) {
+                clearTimeout(restartTimeoutRef.current);
+            }
+
             if (recognitionRef.current) {
                 try {
                     recognitionRef.current.stop();
