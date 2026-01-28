@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 type RecordingState = 'idle' | 'recording' | 'processing' | 'completed' | 'error';
 
@@ -11,35 +12,25 @@ interface VoiceRecorderHook {
     error: string | null;
 }
 
-// Usar tipos nativos del navegador para Web Speech API
-// Usamos 'any' para evitar conflictos con tipos existentes
-const SpeechRecognitionAPI: any =
-    typeof window !== 'undefined'
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        : null;
-
-// Detectar si estamos en móvil
-const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
 /**
- * Hook personalizado para grabación y procesamiento de voz
- * Optimizado para funcionar en PC y móviles
+ * Hook de grabación de voz usando react-speech-recognition
+ * Funciona mejor en móviles que la implementación manual
  */
 const useVoiceRecorder = (): VoiceRecorderHook => {
     const [recordingState, setRecordingState] = useState<RecordingState>('idle');
-    const [transcript, setTranscript] = useState('');
+    const [processedTranscript, setProcessedTranscript] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const lastTranscriptRef = useRef('');
 
-    const recognitionRef = useRef<any>(null);
-    const fullTranscriptRef = useRef<string>('');
-    const isRecordingRef = useRef<boolean>(false);
-    const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lastResultIndexRef = useRef<number>(0);
+    const {
+        transcript,
+        listening,
+        resetTranscript,
+        browserSupportsSpeechRecognition,
+        isMicrophoneAvailable
+    } = useSpeechRecognition();
 
-    /**
-     * Normaliza números hablados a dígitos
-     * "dos" -> "2", "uno punto cinco" -> "1.5"
-     */
+    // Mapa de números hablados a dígitos
     const normalizeNumbers = useCallback((text: string): string => {
         const numberMap: { [key: string]: string } = {
             'cero': '0', 'uno': '1', 'una': '1', 'dos': '2', 'tres': '3',
@@ -57,41 +48,21 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         };
 
         let normalized = text.toLowerCase();
-
-        // Reemplazar "punto" o "coma" por "." para decimales
         normalized = normalized.replace(/\s+(punto|coma)\s+/g, '.');
 
-        // Reemplazar números hablados
         Object.entries(numberMap).forEach(([word, digit]) => {
             const regex = new RegExp(`\\b${word}\\b`, 'gi');
             normalized = normalized.replace(regex, digit);
         });
 
-        // Manejar "y" en números compuestos (ej: "veinte y uno" -> "21")
-        normalized = normalized.replace(/(\d+)\s+y\s+(\d+)/g, (_match, tens, ones) => {
-            return String(parseInt(tens) + parseInt(ones));
-        });
-
         return normalized;
     }, []);
 
-    /**
-     * Detecta productos basándose en el patrón: número + unidad + nombre_producto
-     * Mejorado para móviles con patrones más flexibles
-     */
+    // Detectar productos del texto
     const detectProducts = useCallback((text: string): string[] => {
-        // Normalizar números primero
         let normalized = normalizeNumbers(text);
-
-        // Limpiar repeticiones de palabras (común en móviles)
-        normalized = normalized.replace(/\b(\w+)( \1\b)+/gi, '$1');
-
-        // Limpiar espacios múltiples
         normalized = normalized.replace(/\s+/g, ' ').trim();
 
-        console.log('Texto normalizado:', normalized);
-
-        // Patrones comunes de unidades (más completo)
         const units = [
             'libras?', 'lb', 'lbs',
             'kilos?', 'kg', 'kgs', 'kilogramos?',
@@ -108,17 +79,14 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
 
         const products: string[] = [];
 
-        // Estrategia 1: Patrón completo con unidad
-        // Más flexible para móviles - permite más variaciones
         const patternWithUnit = new RegExp(
             `(\\d+(?:[.,]\\d+)?)\\s*(?:de\\s+)?(${units})\\s+(?:de\\s+)?([^\\d]+?)(?=\\s*\\d+|$)`,
             'gi'
         );
 
         let match;
-
         while ((match = patternWithUnit.exec(normalized)) !== null) {
-            const quantity = match[1].replace(',', '.'); // Normalizar comas a puntos
+            const quantity = match[1].replace(',', '.');
             const unit = match[2];
             const productName = match[3].trim();
 
@@ -128,14 +96,11 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             }
         }
 
-        // Estrategia 2: Si no encontramos con unidades, buscar solo números + texto
         if (products.length === 0) {
             const simplePattern = /(\d+(?:[.,]\d+)?)\s+([^\d]+?)(?=\s*\d+|$)/gi;
-
             while ((match = simplePattern.exec(normalized)) !== null) {
                 const quantity = match[1].replace(',', '.');
                 const rest = match[2].trim();
-
                 if (rest.length > 0) {
                     const capitalizedRest = rest.charAt(0).toUpperCase() + rest.slice(1);
                     products.push(`${quantity} ${capitalizedRest}`);
@@ -143,9 +108,6 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             }
         }
 
-        console.log('Productos detectados:', products);
-
-        // Si aún no hay productos, devolver el texto normalizado completo
         if (products.length === 0 && normalized.trim().length > 0) {
             return [normalized.charAt(0).toUpperCase() + normalized.slice(1)];
         }
@@ -153,274 +115,87 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         return products;
     }, [normalizeNumbers]);
 
-    /**
-     * Reinicia el reconocimiento automáticamente para grabaciones largas
-     * Optimizado para móviles
-     */
-    const restartRecognition = useCallback(() => {
-        if (!isRecordingRef.current || !SpeechRecognitionAPI) {
+    // Actualizar estado basado en el listening de la librería
+    useEffect(() => {
+        if (listening && recordingState !== 'recording') {
+            setRecordingState('recording');
+        }
+    }, [listening, recordingState]);
+
+    // Iniciar grabación
+    const startRecording = useCallback(async () => {
+        if (!browserSupportsSpeechRecognition) {
+            setError('Tu navegador no soporta reconocimiento de voz');
+            setRecordingState('error');
             return;
         }
 
-        try {
-            const recognition = new SpeechRecognitionAPI();
-
-            // Configuración optimizada para móviles
-            recognition.continuous = !isMobile; // En móviles, continuous puede causar problemas
-            recognition.interimResults = isMobile; // En móviles, usar interim para mejor captura
-            recognition.lang = 'es-MX';
-
-            // Configuraciones adicionales para móviles
-            if (isMobile) {
-                recognition.maxAlternatives = 1;
-            }
-
-            recognition.onresult = (event: any) => {
-                let newText = '';
-
-                // En móviles, procesar desde el último índice para evitar duplicados
-                const startIndex = isMobile ? lastResultIndexRef.current : 0;
-
-                for (let i = startIndex; i < event.results.length; i++) {
-                    if (event.results[i].isFinal) {
-                        newText += event.results[i][0].transcript + ' ';
-                        lastResultIndexRef.current = i + 1;
-                    } else if (isMobile && event.results[i][0].transcript) {
-                        // En móviles, también capturar resultados interim al final
-                        newText += event.results[i][0].transcript + ' ';
-                    }
-                }
-
-                // ACUMULAR al texto existente, no reemplazar
-                if (newText.trim()) {
-                    const currentText = fullTranscriptRef.current;
-                    const combinedText = (currentText + ' ' + newText).trim();
-
-                    // Evitar duplicados exactos
-                    const words = combinedText.split(' ');
-                    const uniqueWords: string[] = [];
-                    let lastWord = '';
-
-                    for (const word of words) {
-                        if (word !== lastWord || !isMobile) {
-                            uniqueWords.push(word);
-                        }
-                        lastWord = word;
-                    }
-
-                    fullTranscriptRef.current = uniqueWords.join(' ');
-                    console.log('Texto acumulado:', fullTranscriptRef.current);
-                }
-            };
-
-            recognition.onerror = (event: any) => {
-                console.error('Error de reconocimiento:', event.error);
-
-                // En móviles, algunos errores son normales
-                if (event.error === 'no-speech' || event.error === 'aborted') {
-                    // Reintentar en móviles
-                    if (isRecordingRef.current && isMobile) {
-                        if (restartTimeoutRef.current) {
-                            clearTimeout(restartTimeoutRef.current);
-                        }
-                        restartTimeoutRef.current = setTimeout(() => {
-                            if (isRecordingRef.current) {
-                                restartRecognition();
-                            }
-                        }, 300);
-                    }
-                } else if (event.error !== 'network' && isRecordingRef.current) {
-                    // Otros errores, reintentar
-                    if (restartTimeoutRef.current) {
-                        clearTimeout(restartTimeoutRef.current);
-                    }
-                    restartTimeoutRef.current = setTimeout(() => {
-                        if (isRecordingRef.current) {
-                            restartRecognition();
-                        }
-                    }, 500);
-                }
-            };
-
-            recognition.onend = () => {
-                console.log('Reconocimiento finalizado');
-                // Reiniciar automáticamente si aún estamos grabando
-                if (isRecordingRef.current) {
-                    if (restartTimeoutRef.current) {
-                        clearTimeout(restartTimeoutRef.current);
-                    }
-                    // En móviles, esperar un poco más antes de reiniciar
-                    const delay = isMobile ? 300 : 100;
-                    restartTimeoutRef.current = setTimeout(() => {
-                        if (isRecordingRef.current) {
-                            restartRecognition();
-                        }
-                    }, delay);
-                }
-            };
-
-            recognitionRef.current = recognition;
-            recognition.start();
-        } catch (err) {
-            console.error('Error al reiniciar reconocimiento:', err);
-
-            // En móviles, reintentar después de un error
-            if (isRecordingRef.current && isMobile) {
-                if (restartTimeoutRef.current) {
-                    clearTimeout(restartTimeoutRef.current);
-                }
-                restartTimeoutRef.current = setTimeout(() => {
-                    if (isRecordingRef.current) {
-                        restartRecognition();
-                    }
-                }, 1000);
-            }
-        }
-    }, []);
-
-    /**
-     * Inicia la grabación de audio
-     */
-    const startRecording = useCallback(async () => {
-        if (!SpeechRecognitionAPI) {
-            setError('Speech Recognition no está disponible en este navegador');
+        if (!isMicrophoneAvailable) {
+            setError('Micrófono no disponible. Verifica los permisos.');
             setRecordingState('error');
             return;
         }
 
         try {
             setError(null);
+            setProcessedTranscript('');
+            lastTranscriptRef.current = '';
+            resetTranscript();
+
+            await SpeechRecognition.startListening({
+                continuous: true,
+                language: 'es-MX'
+            });
+
             setRecordingState('recording');
-            fullTranscriptRef.current = '';
-            lastResultIndexRef.current = 0;
-            isRecordingRef.current = true;
-            setTranscript('');
-
-            console.log('Iniciando grabación en:', isMobile ? 'móvil' : 'PC');
-
-            // Iniciar el reconocimiento con reinicio automático
-            restartRecognition();
-
         } catch (err) {
-            console.error('Error al iniciar grabación:', err);
-            setError('No se pudo iniciar la grabación. Verifica los permisos del micrófono.');
+            console.error('Error al iniciar:', err);
+            setError('No se pudo iniciar. Verifica permisos del micrófono.');
             setRecordingState('error');
-            isRecordingRef.current = false;
         }
-    }, [restartRecognition]);
+    }, [browserSupportsSpeechRecognition, isMicrophoneAvailable, resetTranscript]);
 
-    /**
-     * Detiene la grabación y procesa el resultado final
-     */
+    // Detener grabación
     const stopRecording = useCallback(() => {
-        if (!isRecordingRef.current || recordingState !== 'recording') {
-            return;
-        }
+        if (!listening) return;
 
-        console.log('Deteniendo grabación...');
-        isRecordingRef.current = false;
         setRecordingState('processing');
+        SpeechRecognition.stopListening();
 
-        // Limpiar timeout de reinicio
-        if (restartTimeoutRef.current) {
-            clearTimeout(restartTimeoutRef.current);
-            restartTimeoutRef.current = null;
-        }
-
-        // Detener reconocimiento
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.stop();
-            } catch (e) {
-                console.error('Error al detener reconocimiento:', e);
-            }
-        }
-
-        // En móviles, esperar más tiempo para asegurar que se capturó todo
-        const processingDelay = isMobile ? 1200 : 800;
-
-        // Procesar resultado después de un delay
+        // Pequeño delay para asegurar que se capturó todo
         setTimeout(() => {
-            const rawText = fullTranscriptRef.current;
-
-            console.log('Texto completo capturado:', rawText);
+            const rawText = transcript;
+            console.log('Texto capturado:', rawText);
 
             if (!rawText || rawText.trim().length === 0) {
-                setError('No se detectó ningún audio. Intenta de nuevo.');
+                setError('No se detectó audio. Intenta de nuevo.');
                 setRecordingState('error');
-                recognitionRef.current = null;
                 return;
             }
 
-            // Detectar productos por patrón
             const products = detectProducts(rawText);
-
-            console.log('Productos finales:', products);
-
-            // Unir con comas
             const finalText = products.join(', ');
 
-            setTranscript(finalText);
+            setProcessedTranscript(finalText);
             setRecordingState('completed');
-            recognitionRef.current = null;
+            console.log('Procesado:', finalText);
+        }, 300);
 
-            console.log('Texto procesado final:', finalText);
-        }, processingDelay);
+    }, [listening, transcript, detectProducts]);
 
-    }, [recordingState, detectProducts]);
-
-    /**
-     * Reinicia el estado del grabador
-     */
+    // Resetear
     const resetRecording = useCallback(() => {
-        isRecordingRef.current = false;
-
-        // Limpiar timeout
-        if (restartTimeoutRef.current) {
-            clearTimeout(restartTimeoutRef.current);
-            restartTimeoutRef.current = null;
-        }
-
-        // Detener reconocimiento si está activo
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.stop();
-            } catch (e) {
-                // Ignorar errores al detener
-            }
-            recognitionRef.current = null;
-        }
-
-        // Reiniciar estados
+        SpeechRecognition.stopListening();
+        resetTranscript();
         setRecordingState('idle');
-        setTranscript('');
+        setProcessedTranscript('');
         setError(null);
-        fullTranscriptRef.current = '';
-        lastResultIndexRef.current = 0;
-    }, []);
-
-    // Cleanup al desmontar
-    useEffect(() => {
-        return () => {
-            isRecordingRef.current = false;
-
-            if (restartTimeoutRef.current) {
-                clearTimeout(restartTimeoutRef.current);
-            }
-
-            if (recognitionRef.current) {
-                try {
-                    recognitionRef.current.stop();
-                } catch (e) {
-                    // Ignorar errores
-                }
-            }
-        };
-    }, []);
+        lastTranscriptRef.current = '';
+    }, [resetTranscript]);
 
     return {
         recordingState,
-        transcript,
+        transcript: processedTranscript,
         startRecording,
         stopRecording,
         resetRecording,
