@@ -121,11 +121,18 @@ function parseOrderByNumbers(text: string): { quantity: number, productText: str
   let currentQuantity: number | null = null;
   let currentProductWords: string[] = [];
 
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const prevToken = i > 0 ? normalize(tokens[i - 1]) : '';
     const correctedToken = correctSpelling(token);
 
-    if (isNumberToken(correctedToken)) {
-      // Si ya teníamos un producto, lo cerramos
+    // CASO ESPECIAL: Si anterior es "de", "#", "numero" → número es parte del nombre
+    const prevIsConnector = ['de', '#', 'numero', 'número', 'no', 'no.'].includes(prevToken);
+    const isNumToken = isNumberToken(correctedToken);
+    const isPartOfProductName = isNumToken && prevIsConnector && currentProductWords.length > 0;
+
+    if (isNumToken && !isPartOfProductName) {
+      // Nueva cantidad - cerrar producto anterior
       if (currentQuantity !== null && currentProductWords.length > 0) {
         orders.push({
           quantity: currentQuantity,
@@ -135,9 +142,11 @@ function parseOrderByNumbers(text: string): { quantity: number, productText: str
       }
       // Abrimos nuevo producto con esta cantidad
       currentQuantity = parseNumber(correctedToken);
+    } else if (isNumToken && isPartOfProductName) {
+      // Número es parte del nombre (ej: "bolsas de 2 libras")
+      currentProductWords.push(token);
     } else if (currentQuantity !== null) {
       // Es texto de producto
-      // Filtrar palabras conectoras
       const skipWords = ['de', 'el', 'la', 'los', 'las', 'y', 'con'];
       if (!skipWords.includes(normalize(correctedToken)) || currentProductWords.length > 0) {
         currentProductWords.push(correctedToken);
@@ -161,8 +170,8 @@ function parseOrderByNumbers(text: string): { quantity: number, productText: str
 }
 
 export const generateResponse = async (userInput: string, products: Product[]): Promise<Invoice | { response: string }> => {
-  // Simular delay de red para UX
-  await new Promise(resolve => setTimeout(resolve, 300));
+  // Delay mínimo para UX (casi instantáneo)
+  await new Promise(resolve => setTimeout(resolve, 50));
 
   const normalizedInput = normalize(userInput);
 

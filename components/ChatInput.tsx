@@ -63,6 +63,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     /**
      * FORMATEO INTELIGENTE: Inserta comas entre productos
      * LÓGICA: NÚMERO abre producto, TEXTO es nombre, próximo NÚMERO cierra y abre nuevo
+     * EXCEPCIÓN: "de X" - el número es parte del nombre (ej: bolsas de 2 libras)
      */
     const formatText = useCallback((input: string): string => {
         if (!input.trim()) return input;
@@ -71,19 +72,28 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
         const products: string[] = [];
         let current: string[] = [];
 
-        for (const token of tokens) {
+        for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
             const corrected = correctWord(token);
+            const prevToken = i > 0 ? tokens[i - 1].toLowerCase() : '';
             const isNumber = /^\d+([.,]\d+)?$/.test(corrected);
 
-            if (isNumber) {
-                // Si ya hay producto, guardarlo
+            // Si la palabra anterior es "de", "#", "numero" → el número es parte del nombre
+            const prevIsConnector = ['de', '#', 'numero', 'número', 'no', 'no.'].includes(prevToken);
+            const isPartOfProductName = isNumber && prevIsConnector && current.length > 0;
+
+            if (isNumber && !isPartOfProductName) {
+                // Nueva cantidad - guardar producto anterior
                 if (current.length > 0) {
                     products.push(current.join(' '));
                     current = [];
                 }
                 current.push(corrected);
+            } else if (isNumber && isPartOfProductName) {
+                // Número es parte del nombre (ej: "bolsas de 2 libras")
+                current.push(corrected);
             } else {
-                // Filtrar conectores al inicio
+                // Es texto
                 const skip = ['de', 'el', 'la', 'los', 'las', 'y', 'con'];
                 if (current.length > 0 || !skip.includes(corrected.toLowerCase())) {
                     current.push(corrected);
@@ -247,8 +257,8 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
                                 type="button"
                                 onClick={() => selectSuggestion(s)}
                                 className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${i === selectedIndex
-                                        ? 'bg-emerald-500/20 text-emerald-300 border-l-2 border-emerald-400'
-                                        : 'text-slate-300 hover:bg-slate-700/50'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-l-2 border-emerald-400'
+                                    : 'text-slate-300 hover:bg-slate-700/50'
                                     }`}
                             >
                                 <span className="font-medium">{s}</span>
