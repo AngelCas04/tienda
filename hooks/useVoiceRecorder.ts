@@ -12,15 +12,35 @@ interface VoiceRecorderHook {
     error: string | null;
 }
 
+// Mapa de números hablados a dígitos
+const NUMBER_MAP: { [key: string]: string } = {
+    'cero': '0', 'uno': '1', 'una': '1', 'dos': '2', 'tres': '3',
+    'cuatro': '4', 'cinco': '5', 'seis': '6', 'siete': '7',
+    'ocho': '8', 'nueve': '9', 'diez': '10',
+    'once': '11', 'doce': '12', 'trece': '13', 'catorce': '14',
+    'quince': '15', 'dieciséis': '16', 'diecisiete': '17',
+    'dieciocho': '18', 'diecinueve': '19', 'veinte': '20',
+    'veintiuno': '21', 'veintidós': '22', 'veintitrés': '23',
+    'veinticuatro': '24', 'veinticinco': '25', 'treinta': '30',
+    'cuarenta': '40', 'cincuenta': '50', 'sesenta': '60',
+    'setenta': '70', 'ochenta': '80', 'noventa': '90',
+    'cien': '100', 'ciento': '100', 'mil': '1000',
+    'medio': '0.5', 'media': '0.5', 'cuarto': '0.25'
+};
+
 /**
  * Hook de grabación de voz usando react-speech-recognition
- * Funciona mejor en móviles que la implementación manual
+ * 
+ * REGLAS PARA AUDIO CONTINUO:
+ * - No espera silencios para separar productos
+ * - Cada número indica un nuevo producto
+ * - Procesa la frase completa aunque sea larga
+ * - No limita la cantidad de productos
  */
 const useVoiceRecorder = (): VoiceRecorderHook => {
     const [recordingState, setRecordingState] = useState<RecordingState>('idle');
     const [processedTranscript, setProcessedTranscript] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const lastTranscriptRef = useRef('');
 
     const {
         transcript,
@@ -30,27 +50,18 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         isMicrophoneAvailable
     } = useSpeechRecognition();
 
-    // Mapa de números hablados a dígitos
+    /**
+     * Convertir palabras numéricas a dígitos
+     * "dos arroz tres frijol" -> "2 arroz 3 frijol"
+     */
     const normalizeNumbers = useCallback((text: string): string => {
-        const numberMap: { [key: string]: string } = {
-            'cero': '0', 'uno': '1', 'una': '1', 'dos': '2', 'tres': '3',
-            'cuatro': '4', 'cinco': '5', 'seis': '6', 'siete': '7',
-            'ocho': '8', 'nueve': '9', 'diez': '10',
-            'once': '11', 'doce': '12', 'trece': '13', 'catorce': '14',
-            'quince': '15', 'dieciséis': '16', 'diecisiete': '17',
-            'dieciocho': '18', 'diecinueve': '19', 'veinte': '20',
-            'veintiuno': '21', 'veintidós': '22', 'veintitrés': '23',
-            'veinticuatro': '24', 'veinticinco': '25', 'treinta': '30',
-            'cuarenta': '40', 'cincuenta': '50', 'sesenta': '60',
-            'setenta': '70', 'ochenta': '80', 'noventa': '90',
-            'cien': '100', 'ciento': '100', 'mil': '1000',
-            'medio': '0.5', 'media': '0.5', 'cuarto': '0.25'
-        };
-
         let normalized = text.toLowerCase();
+
+        // Convertir "punto" y "coma" a decimales
         normalized = normalized.replace(/\s+(punto|coma)\s+/g, '.');
 
-        Object.entries(numberMap).forEach(([word, digit]) => {
+        // Reemplazar palabras numéricas con dígitos
+        Object.entries(NUMBER_MAP).forEach(([word, digit]) => {
             const regex = new RegExp(`\\b${word}\\b`, 'gi');
             normalized = normalized.replace(regex, digit);
         });
@@ -58,64 +69,56 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         return normalized;
     }, []);
 
-    // Detectar productos del texto
-    const detectProducts = useCallback((text: string): string[] => {
+    /**
+     * Formatear el texto detectado insertando comas entre productos
+     * LÓGICA CLAVE:
+     * [NÚMERO] → abre producto
+     * [TEXTO] → nombre del producto  
+     * [NÚMERO] → cierra producto anterior + coma → abre nuevo
+     */
+    const formatTranscript = useCallback((text: string): string => {
+        // Primero normalizar números hablados a dígitos
         let normalized = normalizeNumbers(text);
         normalized = normalized.replace(/\s+/g, ' ').trim();
 
-        const units = [
-            'libras?', 'lb', 'lbs',
-            'kilos?', 'kg', 'kgs', 'kilogramos?',
-            'gramos?', 'gr', 'grs',
-            'onzas?', 'oz',
-            'unidades?', 'piezas?',
-            'cajas?', 'paquetes?',
-            'bolsas?', 'sacos?',
-            'litros?', 'lts?', 'l',
-            'galones?', 'gal',
-            'metros?', 'mts?',
-            'docenas?'
-        ].join('|');
+        if (!normalized) return '';
 
+        // Tokenizar
+        const tokens = normalized.split(' ');
         const products: string[] = [];
+        let currentProduct: string[] = [];
 
-        const patternWithUnit = new RegExp(
-            `(\\d+(?:[.,]\\d+)?)\\s*(?:de\\s+)?(${units})\\s+(?:de\\s+)?([^\\d]+?)(?=\\s*\\d+|$)`,
-            'gi'
-        );
+        for (const token of tokens) {
+            const isNumber = /^\d+([.,]\d+)?$/.test(token);
 
-        let match;
-        while ((match = patternWithUnit.exec(normalized)) !== null) {
-            const quantity = match[1].replace(',', '.');
-            const unit = match[2];
-            const productName = match[3].trim();
-
-            if (productName.length > 0) {
-                const capitalizedProduct = productName.charAt(0).toUpperCase() + productName.slice(1);
-                products.push(`${quantity} ${unit} ${capitalizedProduct}`);
-            }
-        }
-
-        if (products.length === 0) {
-            const simplePattern = /(\d+(?:[.,]\d+)?)\s+([^\d]+?)(?=\s*\d+|$)/gi;
-            while ((match = simplePattern.exec(normalized)) !== null) {
-                const quantity = match[1].replace(',', '.');
-                const rest = match[2].trim();
-                if (rest.length > 0) {
-                    const capitalizedRest = rest.charAt(0).toUpperCase() + rest.slice(1);
-                    products.push(`${quantity} ${capitalizedRest}`);
+            if (isNumber) {
+                // Si ya hay un producto acumulado, guardarlo
+                if (currentProduct.length > 0) {
+                    products.push(currentProduct.join(' '));
+                    currentProduct = [];
+                }
+                // Empezar nuevo producto con este número
+                currentProduct.push(token);
+            } else {
+                // Es texto, agregarlo al producto actual
+                // Filtrar conectores sueltos al inicio
+                const skipWords = ['de', 'el', 'la', 'los', 'las', 'y', 'con'];
+                if (currentProduct.length > 0 || !skipWords.includes(token)) {
+                    currentProduct.push(token);
                 }
             }
         }
 
-        if (products.length === 0 && normalized.trim().length > 0) {
-            return [normalized.charAt(0).toUpperCase() + normalized.slice(1)];
+        // Agregar último producto
+        if (currentProduct.length > 0) {
+            products.push(currentProduct.join(' '));
         }
 
-        return products;
+        // Unir con comas
+        return products.join(', ');
     }, [normalizeNumbers]);
 
-    // Actualizar estado basado en el listening de la librería
+    // Sincronizar estado con la librería
     useEffect(() => {
         if (listening && recordingState !== 'recording') {
             setRecordingState('recording');
@@ -131,7 +134,7 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         }
 
         if (!isMicrophoneAvailable) {
-            setError('Micrófono no disponible. Verifica los permisos.');
+            setError('Micrófono no disponible. Permite el acceso.');
             setRecordingState('error');
             return;
         }
@@ -139,7 +142,6 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         try {
             setError(null);
             setProcessedTranscript('');
-            lastTranscriptRef.current = '';
             resetTranscript();
 
             await SpeechRecognition.startListening({
@@ -150,38 +152,38 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
             setRecordingState('recording');
         } catch (err) {
             console.error('Error al iniciar:', err);
-            setError('No se pudo iniciar. Verifica permisos del micrófono.');
+            setError('Error al iniciar. Verifica permisos.');
             setRecordingState('error');
         }
     }, [browserSupportsSpeechRecognition, isMicrophoneAvailable, resetTranscript]);
 
-    // Detener grabación
+    // Detener grabación y procesar
     const stopRecording = useCallback(() => {
         if (!listening) return;
 
         setRecordingState('processing');
         SpeechRecognition.stopListening();
 
-        // Pequeño delay para asegurar que se capturó todo
+        // Delay para capturar últimos fragmentos
         setTimeout(() => {
             const rawText = transcript;
-            console.log('Texto capturado:', rawText);
+            console.log('Audio capturado:', rawText);
 
             if (!rawText || rawText.trim().length === 0) {
-                setError('No se detectó audio. Intenta de nuevo.');
+                setError('No se detectó audio. Habla más fuerte.');
                 setRecordingState('error');
                 return;
             }
 
-            const products = detectProducts(rawText);
-            const finalText = products.join(', ');
+            // Formatear con comas automáticas
+            const formatted = formatTranscript(rawText);
+            console.log('Formateado:', formatted);
 
-            setProcessedTranscript(finalText);
+            setProcessedTranscript(formatted);
             setRecordingState('completed');
-            console.log('Procesado:', finalText);
-        }, 300);
+        }, 400);
 
-    }, [listening, transcript, detectProducts]);
+    }, [listening, transcript, formatTranscript]);
 
     // Resetear
     const resetRecording = useCallback(() => {
@@ -190,7 +192,6 @@ const useVoiceRecorder = (): VoiceRecorderHook => {
         setRecordingState('idle');
         setProcessedTranscript('');
         setError(null);
-        lastTranscriptRef.current = '';
     }, [resetTranscript]);
 
     return {
